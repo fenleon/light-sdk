@@ -42,6 +42,11 @@ class LightSdkPlugin : Plugin<Project> {
             "org.sol4k:sol4k",
             "org.sol4k:tweetnacl",
             "org.sol4k:utilities",
+            // The SDK's own modules. Inside light-sdk they resolve as project
+            // deps (exempt from this check); composite consumers resolve them
+            // as substituted modules (com.thelightphone:sdk-client →
+            // com.thelightphone:client), so allow the whole SDK group.
+            "com.thelightphone",
         )
 
         val ALLOWED_PLUGINS = setOf(

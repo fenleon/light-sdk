@@ -243,6 +243,18 @@ class LightSdkService : Service() {
                 )
             }
 
+            // Media methods are additive (Audiobooks companion); the wrapping server app
+            // handles them via customServiceMethodResolver.
+            LightServiceMethod.GetBooks,
+            LightServiceMethod.ScanLibrary,
+            LightServiceMethod.PlayBook,
+            LightServiceMethod.PausePlayback,
+            LightServiceMethod.SeekTo,
+            LightServiceMethod.SetPlaybackSpeed,
+            LightServiceMethod.GetPlaybackState -> {
+                LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
+            }
+
             null -> {
                 // The app that wraps this server may be able to handle custom methods
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)

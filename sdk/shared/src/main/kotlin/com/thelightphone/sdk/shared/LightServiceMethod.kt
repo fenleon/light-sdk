@@ -144,6 +144,97 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val phoneNumber: String,
         )
     }
+
+    // --- Media methods (local, additive addition for the Audiobooks companion;
+    // upstreamable — production com.lightos should implement these for a real LP3).
+    object GetBooks : LightServiceMethod<Unit, GetBooks.Response> {
+        override val id = "GetBooks"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Part(
+            val title: String,
+            val durationMs: Long,
+        )
+
+        @Serializable
+        data class Book(
+            val id: String,
+            val title: String,
+            val author: String,
+            val durationMs: Long,
+            val progressMs: Long,
+            val partCount: Int,
+            val parts: List<Part> = emptyList(),
+        )
+
+        @Serializable
+        data class Response(val books: List<Book>)
+    }
+
+    object ScanLibrary : LightServiceMethod<Unit, GetBooks.Response> {
+        override val id = "ScanLibrary"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<GetBooks.Response>()
+    }
+
+    object PlayBook : LightServiceMethod<PlayBook.Request, Unit> {
+        override val id = "PlayBook"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(
+            val bookId: String,
+            val partIndex: Int = 0,
+            val positionMs: Long = 0,
+        )
+    }
+
+    object PausePlayback : LightServiceMethod<Unit, Unit> {
+        override val id = "PausePlayback"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Unit>()
+    }
+
+    object SeekTo : LightServiceMethod<SeekTo.Request, Unit> {
+        override val id = "SeekTo"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val positionMs: Long)
+    }
+
+    object SetPlaybackSpeed : LightServiceMethod<SetPlaybackSpeed.Request, Unit> {
+        override val id = "SetPlaybackSpeed"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val speed: Float)
+    }
+
+    object GetPlaybackState : LightServiceMethod<Unit, GetPlaybackState.Response> {
+        override val id = "GetPlaybackState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            val bookId: String? = null,
+            val title: String? = null,
+            val author: String? = null,
+            val partIndex: Int = 0,
+            val partCount: Int = 0,
+            val partTitle: String? = null,
+            val positionMs: Long = 0,
+            val durationMs: Long = 0,
+            val playing: Boolean = false,
+            val speed: Float = 1.0f,
+        )
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -156,4 +247,11 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.DeviceKeyEvent,
     LightServiceMethod.GetUserPreferences,
     LightServiceMethod.OpenDialer,
+    LightServiceMethod.GetBooks,
+    LightServiceMethod.ScanLibrary,
+    LightServiceMethod.PlayBook,
+    LightServiceMethod.PausePlayback,
+    LightServiceMethod.SeekTo,
+    LightServiceMethod.SetPlaybackSpeed,
+    LightServiceMethod.GetPlaybackState,
 ).associateBy { it.id }
