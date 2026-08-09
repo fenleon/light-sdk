@@ -1,5 +1,7 @@
 package com.thelightphone.sdk
 
+import android.content.ComponentName
+import android.content.Intent
 import android.view.KeyEvent
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
@@ -40,6 +42,20 @@ abstract class SimpleLightScreen<ResultType>(sealedActivity: SealedLightActivity
     fun <T> navigateTo(screenFactory: (SealedLightActivity) -> SimpleLightScreen<T>, resultCallback: ((T) -> Unit)? = null) {
         val screen = screenFactory(SealedLightActivity(activity))
         activity.navigateTo(screen, resultCallback)
+    }
+
+    /**
+     * Starts an activity in the companion server package (e.g. a consent or
+     * settings screen). Tools cannot call startActivity directly (the SDK
+     * plugin forbids it); this is the sanctioned path, mirroring the
+     * permission-request launcher pattern.
+     */
+    fun startServerActivity(flattenedComponentName: String) {
+        runCatching {
+            activity.startActivity(
+                Intent().setComponent(ComponentName.unflattenFromString(flattenedComponentName)),
+            )
+        }
     }
 
     open fun goBack(result: ResultType? = null) {

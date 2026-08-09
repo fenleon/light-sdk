@@ -39,8 +39,11 @@ enum class LightAudioPlayerAvailability {
  *
  * Transient focus loss pauses and later resumes playback; duckable loss lowers
  * volume. Call [release] when the owning screen is destroyed.
+ *
+ * Note: made public (was `internal`) locally so the bard module can construct
+ * it with a plain context; upstream factory remains [LightAudio].
  */
-class LightAudioPlayer internal constructor(
+class LightAudioPlayer constructor(
     context: Context,
     usage: LightAudioUsage = LightAudioUsage.Music,
     internal val playback: LightAudioPlayback = LightAudioPlayback.Attached,

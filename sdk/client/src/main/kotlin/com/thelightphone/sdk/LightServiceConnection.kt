@@ -35,6 +35,9 @@ internal object LightServiceConnection : ServiceConnection {
     private var bound = false
     private var binderReady = CompletableDeferred<IBinder>()
     private var token: String = DEFAULT_TOKEN
+    // Serializes token acquisition: concurrent first calls would each fetch a
+    // different token and the server would reject the others (InvalidToken).
+    private val tokenLock = Any()
     // Retained so we can rebind ourselves if the binding dies. applicationContext, so no leak.
     private var appContext: Context? = null
     private var serverPackage: String? = null
@@ -134,9 +137,9 @@ internal object LightServiceConnection : ServiceConnection {
 
     suspend fun awaitBinder(): IBinder = binderReady.await()
 
-    fun ensureToken(): Boolean {
-        if (token != DEFAULT_TOKEN) return true
-        return when (val result = request(
+    fun ensureToken(): Boolean = synchronized(tokenLock) {
+        if (token != DEFAULT_TOKEN) return@synchronized true
+        when (val result = request(
             LightServiceMethod.GetToken.id,
             LightServiceMethod.GetToken.encodeRequest(Unit)
         )) {

@@ -247,7 +247,12 @@ class LightSdkService : Service() {
             // handles them via customServiceMethodResolver.
             LightServiceMethod.GetBooks,
             LightServiceMethod.ScanLibrary,
+            LightServiceMethod.DeleteBook,
+            LightServiceMethod.SeekToPart,
+            LightServiceMethod.GetAutoPlayNext,
+            LightServiceMethod.SetAutoPlayNext,
             LightServiceMethod.PlayBook,
+            LightServiceMethod.OpenBook,
             LightServiceMethod.PausePlayback,
             LightServiceMethod.SeekTo,
             LightServiceMethod.SetPlaybackSpeed,

@@ -179,8 +179,77 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val responseSerializer = serializer<GetBooks.Response>()
     }
 
+    /**
+     * Deletes a book's files. On Android 11+ the companion needs the system
+     * consent dialog to delete media it doesn't own; [Response.consentPending]
+     * signals that the dialog was shown and the deletion completes if the user
+     * confirms (the tool's library refreshes when it resumes).
+     */
+    object DeleteBook : LightServiceMethod<DeleteBook.Request, DeleteBook.Response> {
+        override val id = "DeleteBook"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val bookId: String)
+
+        @Serializable
+        data class Response(
+            val deleted: Boolean = false,
+            val consentPending: Boolean = false,
+            /** Simple class name of the companion's consent activity to launch (resolved in the server package) when [consentPending]. */
+            val consentComponent: String? = null,
+        )
+    }
+
+    /**
+     * Jumps to a part (chapter) on the already-loaded book, preserving the
+     * current play/pause state — switching chapters never starts playback.
+     */
+    object SeekToPart : LightServiceMethod<SeekToPart.Request, Unit> {
+        override val id = "SeekToPart"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val partIndex: Int)
+    }
+
+    /** Whether playback should continue into the next chapter when one ends. */
+    object GetAutoPlayNext : LightServiceMethod<Unit, GetAutoPlayNext.Response> {
+        override val id = "GetAutoPlayNext"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val enabled: Boolean)
+    }
+
+    object SetAutoPlayNext : LightServiceMethod<SetAutoPlayNext.Request, Unit> {
+        override val id = "SetAutoPlayNext"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val enabled: Boolean)
+    }
+
     object PlayBook : LightServiceMethod<PlayBook.Request, Unit> {
         override val id = "PlayBook"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(
+            val bookId: String,
+            val partIndex: Int = 0,
+            val positionMs: Long = 0,
+        )
+    }
+
+    /** Loads a book paused at its saved position (the player opens, nothing plays). */
+    object OpenBook : LightServiceMethod<OpenBook.Request, Unit> {
+        override val id = "OpenBook"
         override val requestSerializer = serializer<Request>()
         override val responseSerializer = serializer<Unit>()
 
@@ -249,7 +318,12 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.OpenDialer,
     LightServiceMethod.GetBooks,
     LightServiceMethod.ScanLibrary,
+    LightServiceMethod.DeleteBook,
+    LightServiceMethod.SeekToPart,
+    LightServiceMethod.GetAutoPlayNext,
+    LightServiceMethod.SetAutoPlayNext,
     LightServiceMethod.PlayBook,
+    LightServiceMethod.OpenBook,
     LightServiceMethod.PausePlayback,
     LightServiceMethod.SeekTo,
     LightServiceMethod.SetPlaybackSpeed,
