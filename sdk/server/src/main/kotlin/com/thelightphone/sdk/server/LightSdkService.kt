@@ -263,7 +263,10 @@ class LightSdkService : Service() {
             LightServiceMethod.AddPass,
             LightServiceMethod.UpdatePassName,
             LightServiceMethod.DeletePass,
-            LightServiceMethod.GetBarcode -> {
+            LightServiceMethod.GetBarcode,
+            // Chats methods are additive (Chats companion); the wrapping server
+            // app handles them via customServiceMethodResolver.
+            LightServiceMethod.ChatPing -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 

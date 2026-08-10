@@ -370,6 +370,14 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         @Serializable
         data class Response(val png: ByteArray)
     }
+
+    // --- Chats methods (local, additive addition for the Chats companion;
+    // upstreamable — production com.lightos should implement these for a real LP3).
+    object ChatPing : LightServiceMethod<Unit, Unit> {
+        override val id = "ChatPing"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Unit>()
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -399,4 +407,5 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.UpdatePassName,
     LightServiceMethod.DeletePass,
     LightServiceMethod.GetBarcode,
+    LightServiceMethod.ChatPing,
 ).associateBy { it.id }
