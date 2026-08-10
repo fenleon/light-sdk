@@ -365,7 +365,11 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val responseSerializer = serializer<Response>()
 
         @Serializable
-        data class Request(val passId: String)
+        data class Request(
+            val passId: String,
+            /** Target render width in pixels; the companion snaps to exact modules below it. */
+            val width: Int = 960,
+        )
 
         @Serializable
         data class Response(val png: ByteArray)
@@ -377,6 +381,151 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val id = "ChatPing"
         override val requestSerializer = serializer<Unit>()
         override val responseSerializer = serializer<Unit>()
+    }
+
+    /**
+     * Logs the Matrix account in on the companion: [Request.passwordOrToken] is
+     * used as a password unless [Request.tokenLogin] is set, in which case it is
+     * an access token (m.login.token). The homeserver string may be a bare
+     * domain; the companion resolves it (with .well-known discovery) before login.
+     */
+    object SetAccount : LightServiceMethod<SetAccount.Request, SetAccount.Response> {
+        override val id = "SetAccount"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val homeserver: String,
+            val user: String,
+            val passwordOrToken: String,
+            val tokenLogin: Boolean = false,
+        )
+
+        @Serializable
+        data class Response(
+            val userId: String,
+            val deviceId: String,
+        )
+    }
+
+    object GetAccountState : LightServiceMethod<Unit, GetAccountState.Response> {
+        override val id = "GetAccountState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            val loggedIn: Boolean,
+            val userId: String? = null,
+            val homeserver: String? = null,
+        )
+    }
+
+    object Logout : LightServiceMethod<Unit, Unit> {
+        override val id = "Logout"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Unit>()
+    }
+
+    /** Snapshot of the user's rooms, newest activity first. */
+    object GetRooms : LightServiceMethod<Unit, GetRooms.Response> {
+        override val id = "GetRooms"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Room(
+            val id: String,
+            val name: String,
+            val lastMessage: String,
+            val unreadCount: Long,
+            val lastTimestampMs: Long,
+            /** Id of the newest timeline event, for the thread's initial cursor. */
+            val lastEventId: String? = null,
+        )
+
+        @Serializable
+        data class Response(val rooms: List<Room>)
+    }
+
+    /**
+     * Page of messages in a room, oldest first. Pass [Request.beforeEventId] to
+     * page further back; null returns the newest [Request.limit] messages.
+     */
+    object GetMessages : LightServiceMethod<GetMessages.Request, GetMessages.Response> {
+        override val id = "GetMessages"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val roomId: String,
+            val beforeEventId: String? = null,
+            val limit: Int = 30,
+        )
+
+        @Serializable
+        data class Message(
+            val id: String,
+            val sender: String,
+            val senderName: String,
+            val body: String,
+            val timestampMs: Long,
+            val isMine: Boolean,
+        )
+
+        @Serializable
+        data class Response(val messages: List<Message>)
+    }
+
+    object SendMessage : LightServiceMethod<SendMessage.Request, SendMessage.Response> {
+        override val id = "SendMessage"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val roomId: String,
+            val body: String,
+            val replyToEventId: String? = null,
+        )
+
+        /** The outbox transaction id; the message may still be pending delivery. */
+        @Serializable
+        data class Response(val transactionId: String)
+    }
+
+    object MarkRead : LightServiceMethod<MarkRead.Request, Unit> {
+        override val id = "MarkRead"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String)
+    }
+
+    object SetTyping : LightServiceMethod<SetTyping.Request, Unit> {
+        override val id = "SetTyping"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val active: Boolean)
+    }
+
+    /** Companion connection state, for the tool's Settings/status display. */
+    object GetConnectionState : LightServiceMethod<Unit, GetConnectionState.Response> {
+        override val id = "GetConnectionState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            /** "logged_out" | "connecting" | "syncing" | "offline" */
+            val state: String,
+            val detail: String? = null,
+        )
     }
 }
 
@@ -408,4 +557,13 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.DeletePass,
     LightServiceMethod.GetBarcode,
     LightServiceMethod.ChatPing,
+    LightServiceMethod.SetAccount,
+    LightServiceMethod.GetAccountState,
+    LightServiceMethod.Logout,
+    LightServiceMethod.GetRooms,
+    LightServiceMethod.GetMessages,
+    LightServiceMethod.SendMessage,
+    LightServiceMethod.MarkRead,
+    LightServiceMethod.SetTyping,
+    LightServiceMethod.GetConnectionState,
 ).associateBy { it.id }
