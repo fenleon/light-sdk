@@ -304,6 +304,72 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val speed: Float = 1.0f,
         )
     }
+
+    // --- Passes methods (local, additive addition for the Passes companion;
+    // upstreamable — production com.lightos should implement these for a real LP3).
+    object GetPasses : LightServiceMethod<Unit, GetPasses.Response> {
+        override val id = "GetPasses"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Pass(
+            val id: String,
+            val name: String,
+            val data: String,
+            /** Base64-encoded raw (binary) payload, when the code carries one. */
+            val rawData: String? = null,
+            val type: String,
+        )
+
+        @Serializable
+        data class Response(val passes: List<Pass>)
+    }
+
+    object AddPass : LightServiceMethod<AddPass.Request, Unit> {
+        override val id = "AddPass"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(
+            val name: String,
+            val data: String,
+            val rawData: String? = null,
+            val type: String,
+        )
+    }
+
+    object UpdatePassName : LightServiceMethod<UpdatePassName.Request, Unit> {
+        override val id = "UpdatePassName"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val passId: String, val name: String)
+    }
+
+    object DeletePass : LightServiceMethod<DeletePass.Request, Unit> {
+        override val id = "DeletePass"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val passId: String)
+    }
+
+    /** Renders a pass's barcode in the companion; the PNG bytes cross the binder as base64. */
+    object GetBarcode : LightServiceMethod<GetBarcode.Request, GetBarcode.Response> {
+        override val id = "GetBarcode"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val passId: String)
+
+        @Serializable
+        data class Response(val png: ByteArray)
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -328,4 +394,9 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.SeekTo,
     LightServiceMethod.SetPlaybackSpeed,
     LightServiceMethod.GetPlaybackState,
+    LightServiceMethod.GetPasses,
+    LightServiceMethod.AddPass,
+    LightServiceMethod.UpdatePassName,
+    LightServiceMethod.DeletePass,
+    LightServiceMethod.GetBarcode,
 ).associateBy { it.id }

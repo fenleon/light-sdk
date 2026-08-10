@@ -256,7 +256,14 @@ class LightSdkService : Service() {
             LightServiceMethod.PausePlayback,
             LightServiceMethod.SeekTo,
             LightServiceMethod.SetPlaybackSpeed,
-            LightServiceMethod.GetPlaybackState -> {
+            LightServiceMethod.GetPlaybackState,
+            // Passes methods are additive (Passes companion); the wrapping server
+            // app handles them via customServiceMethodResolver.
+            LightServiceMethod.GetPasses,
+            LightServiceMethod.AddPass,
+            LightServiceMethod.UpdatePassName,
+            LightServiceMethod.DeletePass,
+            LightServiceMethod.GetBarcode -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 
