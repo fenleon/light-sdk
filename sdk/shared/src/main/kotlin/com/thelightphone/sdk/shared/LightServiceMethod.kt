@@ -542,6 +542,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * don't truncate pagination early.
              */
             val hasMore: Boolean = false,
+            /**
+             * Whether this room is end-to-end encrypted. When the device isn't
+             * verified the companion returns this without fetching (the events
+             * can't decrypt anyway), so the tool can say so immediately.
+             */
+            val encrypted: Boolean = false,
         )
     }
 
