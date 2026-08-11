@@ -172,11 +172,6 @@ fun LightLazyScrollView(
     val scrollPx = scrollMetrics.first
     val maxScrollPx = scrollMetrics.second
     val showScrollBar = maxScrollPx > 0f
-    val contentPaddingEnd = when {
-        !showScrollBar -> 0f
-        scrollBarPosition == LightScrollBarPosition.Outside -> SCROLLBAR_WIDTH_UNITS
-        else -> 0f
-    }
 
     fun scrollToOffsetPx(targetPx: Float) {
         if (itemHeightPx <= 0f) return
@@ -211,12 +206,14 @@ fun LightLazyScrollView(
         }
     } else {
         Row(modifier = modifier) {
+            // Outside: the scrollbar is a sibling in the Row, so it already
+            // reserves the gutter — no extra end padding (that would double the
+            // inset and push content ~2 grid units short of the screen edge).
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .padding(end = contentPaddingEnd.gridUnitsAsDp()),
+                    .fillMaxHeight(),
                 content = content,
             )
             if (showScrollBar) {
