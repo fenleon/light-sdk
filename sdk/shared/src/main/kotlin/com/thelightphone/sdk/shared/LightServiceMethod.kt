@@ -591,6 +591,10 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             /** "logged_out" | "connecting" | "syncing" | "offline" */
             val state: String,
             val detail: String? = null,
+            /** Rooms in the list cache so far — the Settings sync-progress line. */
+            val roomsTotal: Int = 0,
+            /** Rooms whose name/preview have been resolved in the background so far. */
+            val roomsResolved: Int = 0,
         )
     }
 
