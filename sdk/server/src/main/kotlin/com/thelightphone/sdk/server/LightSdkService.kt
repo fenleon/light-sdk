@@ -261,13 +261,15 @@ class LightSdkService : Service() {
             // app handles them via customServiceMethodResolver.
             LightServiceMethod.GetPasses,
             LightServiceMethod.AddPass,
-            LightServiceMethod.UpdatePassName,
+            LightServiceMethod.UpdatePass,
             LightServiceMethod.DeletePass,
             LightServiceMethod.GetBarcode,
             // Chats methods are additive (Chats companion); the wrapping server
             // app handles them via customServiceMethodResolver.
             LightServiceMethod.ChatPing,
             LightServiceMethod.SetAccount,
+            LightServiceMethod.BeeperRequestCode,
+            LightServiceMethod.SetBeeperAccount,
             LightServiceMethod.GetAccountState,
             LightServiceMethod.Logout,
             LightServiceMethod.GetRooms,
@@ -275,7 +277,13 @@ class LightSdkService : Service() {
             LightServiceMethod.SendMessage,
             LightServiceMethod.MarkRead,
             LightServiceMethod.SetTyping,
-            LightServiceMethod.GetConnectionState -> {
+            LightServiceMethod.GetConnectionState,
+            LightServiceMethod.GetE2eeState,
+            LightServiceMethod.StartDeviceVerification,
+            LightServiceMethod.GetVerificationState,
+            LightServiceMethod.VerifyAction,
+            LightServiceMethod.SetActiveRoom,
+            LightServiceMethod.TakeNotifyRoom -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 

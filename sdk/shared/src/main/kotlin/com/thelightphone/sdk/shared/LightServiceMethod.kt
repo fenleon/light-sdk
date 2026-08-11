@@ -320,6 +320,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             /** Base64-encoded raw (binary) payload, when the code carries one. */
             val rawData: String? = null,
             val type: String,
+            /** Optional detail fields — only filled ones are shown in the tool. */
+            val issuer: String? = null,
+            val date: String? = null,
+            val startTime: String? = null,
+            val endTime: String? = null,
+            val location: String? = null,
+            val notes: String? = null,
         )
 
         @Serializable
@@ -340,13 +347,22 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
     }
 
-    object UpdatePassName : LightServiceMethod<UpdatePassName.Request, Unit> {
-        override val id = "UpdatePassName"
+    object UpdatePass : LightServiceMethod<UpdatePass.Request, Unit> {
+        override val id = "UpdatePass"
         override val requestSerializer = serializer<Request>()
         override val responseSerializer = serializer<Unit>()
 
         @Serializable
-        data class Request(val passId: String, val name: String)
+        data class Request(
+            val passId: String,
+            val name: String,
+            val issuer: String? = null,
+            val date: String? = null,
+            val startTime: String? = null,
+            val endTime: String? = null,
+            val location: String? = null,
+            val notes: String? = null,
+        )
     }
 
     object DeletePass : LightServiceMethod<DeletePass.Request, Unit> {
@@ -409,6 +425,45 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
     }
 
+    /**
+     * Requests a Beeper login code by email. The companion starts a Beeper
+     * login request (Beeper's private API — endpoint/token live only in the
+     * companion) and emails [Request.email] a 6-digit code, which is then
+     * exchanged via [SetBeeperAccount].
+     */
+    object BeeperRequestCode : LightServiceMethod<BeeperRequestCode.Request, Unit> {
+        override val id = "BeeperRequestCode"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val email: String)
+    }
+
+    /**
+     * Completes a Beeper account login with the emailed [Request.code]. The
+     * companion verifies the code against Beeper's private API, then performs a
+     * Matrix JWT login (org.matrix.login.jwt) to matrix.beeper.com — the v1
+     * login path (WhatsApp via Beeper's own bridges).
+     */
+    object SetBeeperAccount : LightServiceMethod<SetBeeperAccount.Request, SetBeeperAccount.Response> {
+        override val id = "SetBeeperAccount"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val email: String,
+            val code: String,
+        )
+
+        @Serializable
+        data class Response(
+            val userId: String,
+            val deviceId: String,
+        )
+    }
+
     object GetAccountState : LightServiceMethod<Unit, GetAccountState.Response> {
         override val id = "GetAccountState"
         override val requestSerializer = serializer<Unit>()
@@ -419,6 +474,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val loggedIn: Boolean,
             val userId: String? = null,
             val homeserver: String? = null,
+            /** "beeper" (v1, Beeper account) | "homeserver" (dev/test) | null. */
+            val loginMode: String? = null,
         )
     }
 
@@ -527,6 +584,102 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val detail: String? = null,
         )
     }
+
+    // --- E2EE methods (additive; Trixnity runs the crypto in the companion) ----
+
+    /**
+     * E2EE status of the current session: whether this device is cross-signing
+     * verified (so messages can decrypt) and whether there are other devices on
+     * the account to verify against.
+     */
+    object GetE2eeState : LightServiceMethod<Unit, GetE2eeState.Response> {
+        override val id = "GetE2eeState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            val verified: Boolean,
+            val canVerify: Boolean,
+            val detail: String? = null,
+        )
+    }
+
+    /** Starts interactive (SAS/emoji) verification with the account's other devices. */
+    object StartDeviceVerification : LightServiceMethod<Unit, StartDeviceVerification.Response> {
+        override val id = "StartDeviceVerification"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            val started: Boolean,
+            val error: String? = null,
+        )
+    }
+
+    /** The tool polls this while a verification is in progress. */
+    object GetVerificationState : LightServiceMethod<Unit, GetVerificationState.Response> {
+        override val id = "GetVerificationState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            /**
+             * "none" | "waiting" (awaiting the other device) | "accept" (their
+             * request/SAS — Accept) | "start" (Ready — Start) | "compare" (emoji
+             * comparison) | "done" | "cancelled" | "error".
+             */
+            val state: String,
+            /** The SAS emoji set to compare, when [state] == "compare". */
+            val emoji: List<String>? = null,
+            val detail: String? = null,
+        )
+    }
+
+    /** Drives the interactive verification: "accept" | "start" | "match" | "no_match" | "cancel" | "reset". */
+    object VerifyAction : LightServiceMethod<VerifyAction.Request, VerifyAction.Response> {
+        override val id = "VerifyAction"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val action: String)
+
+        @Serializable
+        data class Response(val ok: Boolean, val error: String? = null)
+    }
+
+    /**
+     * Tells the companion which room the tool is currently showing, so the
+     * sync loop can suppress new-message notifications for it. null = no room
+     * on screen (list/settings/background). Notifications for the active room
+     * are also cancelled when it is set, since opening a thread marks it read.
+     */
+    object SetActiveRoom : LightServiceMethod<SetActiveRoom.Request, Unit> {
+        override val id = "SetActiveRoom"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String? = null)
+    }
+
+    /**
+     * One-shot "which room should the tool open?" — the companion sets this
+     * when it posts a new-message notification (the tap target is the tool's
+     * main activity, which cannot read intent extras), and returns + clears it
+     * on this call. null = no pending room.
+     */
+    object TakeNotifyRoom : LightServiceMethod<Unit, TakeNotifyRoom.Response> {
+        override val id = "TakeNotifyRoom"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val roomId: String? = null)
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -553,11 +706,13 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetPlaybackState,
     LightServiceMethod.GetPasses,
     LightServiceMethod.AddPass,
-    LightServiceMethod.UpdatePassName,
+    LightServiceMethod.UpdatePass,
     LightServiceMethod.DeletePass,
     LightServiceMethod.GetBarcode,
     LightServiceMethod.ChatPing,
     LightServiceMethod.SetAccount,
+    LightServiceMethod.BeeperRequestCode,
+    LightServiceMethod.SetBeeperAccount,
     LightServiceMethod.GetAccountState,
     LightServiceMethod.Logout,
     LightServiceMethod.GetRooms,
@@ -566,4 +721,10 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,
     LightServiceMethod.GetConnectionState,
+    LightServiceMethod.GetE2eeState,
+    LightServiceMethod.StartDeviceVerification,
+    LightServiceMethod.GetVerificationState,
+    LightServiceMethod.VerifyAction,
+    LightServiceMethod.SetActiveRoom,
+    LightServiceMethod.TakeNotifyRoom,
 ).associateBy { it.id }
