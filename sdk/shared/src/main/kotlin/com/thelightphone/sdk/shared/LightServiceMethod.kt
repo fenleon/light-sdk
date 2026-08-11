@@ -533,7 +533,16 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
 
         @Serializable
-        data class Response(val messages: List<Message>)
+        data class Response(
+            val messages: List<Message>,
+            /**
+             * Whether there are more messages older than this page. The
+             * companion computes it from the raw timeline page (not the
+             * message-filtered list), so state events / still-encrypted events
+             * don't truncate pagination early.
+             */
+            val hasMore: Boolean = false,
+        )
     }
 
     object SendMessage : LightServiceMethod<SendMessage.Request, SendMessage.Response> {
