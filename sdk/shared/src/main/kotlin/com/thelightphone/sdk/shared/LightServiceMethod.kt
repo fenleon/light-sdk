@@ -671,6 +671,24 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
     }
 
     /**
+     * Verifies this device non-interactively using the account's recovery key.
+     * Beeper's interactive verification is unreliable (its own guidance says
+     * to use a recovery code instead), so this is the dependable unlock for
+     * E2EE on a new device.
+     */
+    object RecoverWithKey : LightServiceMethod<RecoverWithKey.Request, RecoverWithKey.Response> {
+        override val id = "RecoverWithKey"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val recoveryKey: String)
+
+        @Serializable
+        data class Response(val ok: Boolean, val error: String? = null)
+    }
+
+    /**
      * Tells the companion which room the tool is currently showing, so the
      * sync loop can suppress new-message notifications for it. null = no room
      * on screen (list/settings/background). Notifications for the active room
@@ -744,6 +762,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.StartDeviceVerification,
     LightServiceMethod.GetVerificationState,
     LightServiceMethod.VerifyAction,
+    LightServiceMethod.RecoverWithKey,
     LightServiceMethod.SetActiveRoom,
     LightServiceMethod.TakeNotifyRoom,
 ).associateBy { it.id }

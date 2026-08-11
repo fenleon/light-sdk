@@ -282,6 +282,7 @@ class LightSdkService : Service() {
             LightServiceMethod.StartDeviceVerification,
             LightServiceMethod.GetVerificationState,
             LightServiceMethod.VerifyAction,
+            LightServiceMethod.RecoverWithKey,
             LightServiceMethod.SetActiveRoom,
             LightServiceMethod.TakeNotifyRoom -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
