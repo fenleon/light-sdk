@@ -153,9 +153,20 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val responseSerializer = serializer<Response>()
 
         @Serializable
+        data class Chapter(
+            val title: String,
+            /** Chapter start, offset within its part. */
+            val startMs: Long,
+            /** Chapter end within its part; open-ended chapters are resolved to the next chapter's start or the part duration. */
+            val endMs: Long,
+        )
+
+        @Serializable
         data class Part(
             val title: String,
             val durationMs: Long,
+            /** Embedded chapters (MP3 CHAP frames / M4B bookmarks) within this part. Default empty — backward compatible. */
+            val chapters: List<Chapter> = emptyList(),
         )
 
         @Serializable
@@ -313,16 +324,28 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val responseSerializer = serializer<Response>()
 
         @Serializable
-        data class Pass(
+        data class Code(
             val id: String,
-            val name: String,
             val data: String,
             /** Base64-encoded raw (binary) payload, when the code carries one. */
             val rawData: String? = null,
             val type: String,
+            /** True when the code was typed manually — only typed codes show
+             *  their text under the barcode (scanned payloads are noise). */
+            val typed: Boolean = false,
+        )
+
+        @Serializable
+        data class Pass(
+            val id: String,
+            val name: String,
+            /** The pass's stacked codes, in order (a pass is a name + details
+             *  shared by all its codes). */
+            val codes: List<Code>,
             /** Optional detail fields — only filled ones are shown in the tool. */
             val issuer: String? = null,
             val date: String? = null,
+            val endDate: String? = null,
             val startTime: String? = null,
             val endTime: String? = null,
             val location: String? = null,
@@ -338,12 +361,30 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         override val requestSerializer = serializer<Request>()
         override val responseSerializer = serializer<Unit>()
 
+        /** Creates a new pass (name + details to come) with its first code. */
         @Serializable
         data class Request(
             val name: String,
             val data: String,
             val rawData: String? = null,
             val type: String,
+            val typed: Boolean = false,
+        )
+    }
+
+    /** Adds another code to an existing pass — the barcode panel's "+" flow. */
+    object AddCode : LightServiceMethod<AddCode.Request, Unit> {
+        override val id = "AddCode"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(
+            val passId: String,
+            val data: String,
+            val rawData: String? = null,
+            val type: String,
+            val typed: Boolean = false,
         )
     }
 
@@ -358,6 +399,7 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val name: String,
             val issuer: String? = null,
             val date: String? = null,
+            val endDate: String? = null,
             val startTime: String? = null,
             val endTime: String? = null,
             val location: String? = null,
@@ -365,16 +407,17 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
     }
 
-    object DeletePass : LightServiceMethod<DeletePass.Request, Unit> {
-        override val id = "DeletePass"
+    /** Deletes one stacked code from its pass (the last code removes the pass). */
+    object DeleteCode : LightServiceMethod<DeleteCode.Request, Unit> {
+        override val id = "DeleteCode"
         override val requestSerializer = serializer<Request>()
         override val responseSerializer = serializer<Unit>()
 
         @Serializable
-        data class Request(val passId: String)
+        data class Request(val codeId: String)
     }
 
-    /** Renders a pass's barcode in the companion; the PNG bytes cross the binder as base64. */
+    /** Renders a pass code's barcode in the companion; the PNG bytes cross the binder as base64. */
     object GetBarcode : LightServiceMethod<GetBarcode.Request, GetBarcode.Response> {
         override val id = "GetBarcode"
         override val requestSerializer = serializer<Request>()
@@ -382,7 +425,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
 
         @Serializable
         data class Request(
-            val passId: String,
+            /** The code's id (a pass can hold several stacked codes). */
+            val codeId: String,
             /** Target render width in pixels; the companion snaps to exact modules below it. */
             val width: Int = 960,
         )
@@ -500,6 +544,14 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val lastTimestampMs: Long,
             /** Id of the newest timeline event, for the thread's initial cursor. */
             val lastEventId: String? = null,
+            /** Direct (1:1) chat — the thread can hide per-message sender names. */
+            val isDirect: Boolean = false,
+            /**
+             * Bridged network label ("WhatsApp", "Instagram", …), derived by the
+             * companion from Beeper's per-network spaces. Null = not in any
+             * space (Beeper-internal rooms, user-created spaces stay ungrouped).
+             */
+            val network: String? = null,
         )
 
         @Serializable
@@ -530,6 +582,31 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val body: String,
             val timestampMs: Long,
             val isMine: Boolean,
+            /**
+             * Beeper send status for an outgoing message ("PENDING" /
+             * "FAIL_RETRIABLE" / …), resolved by the companion from the room's
+             * `com.beeper.message_send_status` events. Null = no status event
+             * (not ours, or delivered without a status report).
+             */
+            val sendStatus: String? = null,
+            /**
+             * How the tool renders the row: "text" | "image". Images carry
+             * their bytes over [GetMessageMedia] (keyed by room + event id).
+             */
+            val contentType: String = "text",
+            /**
+             * Whether the other party has read this outgoing message (the
+             * room's m.read receipts). Only meaningful on the newest page —
+             * older pages always report false (receipts describe the newest
+             * events, and re-fetching them per page isn't worth it).
+             */
+            val read: Boolean = false,
+            /**
+             * Distinct reaction emoji on this message (the room's m.reaction
+             * events), newest-page scope — older pages report empty. The tool
+             * renders them as a small tag under the message.
+             */
+            val reactions: List<String> = emptyList(),
         )
 
         @Serializable
@@ -548,6 +625,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * can't decrypt anyway), so the tool can say so immediately.
              */
             val encrypted: Boolean = false,
+            /**
+             * Event id of the voice note currently playing in the companion
+             * (null = nothing playing). The thread poll carries it so the tool
+             * can highlight the row that's playing without an extra RPC.
+             */
+            val audioPlayingEventId: String? = null,
         )
     }
 
@@ -563,9 +646,18 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val replyToEventId: String? = null,
         )
 
-        /** The outbox transaction id; the message may still be pending delivery. */
+        /**
+         * The outbox transaction id; the message may still be pending delivery.
+         * [eventId] is the timeline event id once the homeserver acked the send
+         * (read back from the outbox after the ack); null if it isn't known yet
+         * — the tool uses it for an optimistic thread row that the sync echo
+         * replaces.
+         */
         @Serializable
-        data class Response(val transactionId: String)
+        data class Response(
+            val transactionId: String,
+            val eventId: String? = null,
+        )
     }
 
     object MarkRead : LightServiceMethod<MarkRead.Request, Unit> {
@@ -717,6 +809,101 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         @Serializable
         data class Response(val roomId: String? = null)
     }
+
+    /**
+     * Starts the "attach a photo" flow for [Request.roomId]: the companion
+     * records the room and returns the flattened component name of its photo
+     * picker activity. The tool launches it via
+     * `SimpleLightScreen.startServerActivity` (the tool runtime forbids
+     * startActivity; the companion can't launch activities from the
+     * background). The activity shows the system photo picker, then uploads
+     * and sends the chosen photo in the room itself; the tool's thread poll
+     * picks up the resulting image message.
+     */
+    object StartPhotoSend : LightServiceMethod<StartPhotoSend.Request, StartPhotoSend.Response> {
+        override val id = "StartPhotoSend"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String)
+
+        @Serializable
+        data class Response(val activityComponent: String)
+    }
+
+    /**
+     * Display-ready JPEG bytes for an image message (the companion downloads
+     * the media — decrypting when the room is encrypted — and compresses it
+     * so the binder transaction stays small). Null/empty when the media can't
+     * be fetched (e.g. still-encrypted); the tool falls back to the row's
+     * text body.
+     */
+    object GetMessageMedia : LightServiceMethod<GetMessageMedia.Request, GetMessageMedia.Response> {
+        override val id = "GetMessageMedia"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val roomId: String,
+            val eventId: String,
+            /**
+             * Whether downloads are allowed on the mobile-data connection
+             * (Settings → Mobile data downloads). When false the companion
+             * skips the download while the active network is cellular — the
+             * tool's image row keeps its text fallback until Wi-Fi or the
+             * toggle flips. Defaults to false (the data-conscious default).
+             */
+            val allowMobileData: Boolean = false,
+        )
+
+        @Serializable
+        data class Response(val bytes: ByteArray? = null)
+    }
+
+    /**
+     * Toggles playback of a voice-note (m.audio) message in the companion:
+     * plays [Request.eventId] (stopping any other playback), or stops it if it
+     * is already the one playing. The companion downloads the audio
+     * (decrypting when the room is encrypted) and plays it with a plain
+     * MediaPlayer — everything privileged lives server-side, like photos.
+     */
+    object PlayVoiceNote : LightServiceMethod<PlayVoiceNote.Request, PlayVoiceNote.Response> {
+        override val id = "PlayVoiceNote"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String)
+
+        @Serializable
+        data class Response(
+            /** Whether the requested event is now playing (false = stopped). */
+            val playing: Boolean,
+            /** Human-readable failure, when the audio couldn't be fetched/played. */
+            val error: String? = null,
+        )
+    }
+
+    /**
+     * Starts the send-a-voice-note flow: records the room and returns the
+     * flattened component name of the companion's recording activity, which
+     * the tool launches via `SimpleLightScreen.startServerActivity` (the tool
+     * runtime forbids startActivity). The activity records an m4a and sends it
+     * as an m.audio message in the room itself (same pattern as photos).
+     */
+    object StartVoiceNoteSend : LightServiceMethod<StartVoiceNoteSend.Request, StartVoiceNoteSend.Response> {
+        override val id = "StartVoiceNoteSend"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String)
+
+        @Serializable
+        data class Response(val activityComponent: String)
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -743,8 +930,9 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetPlaybackState,
     LightServiceMethod.GetPasses,
     LightServiceMethod.AddPass,
+    LightServiceMethod.AddCode,
     LightServiceMethod.UpdatePass,
-    LightServiceMethod.DeletePass,
+    LightServiceMethod.DeleteCode,
     LightServiceMethod.GetBarcode,
     LightServiceMethod.ChatPing,
     LightServiceMethod.SetAccount,
@@ -765,4 +953,8 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.RecoverWithKey,
     LightServiceMethod.SetActiveRoom,
     LightServiceMethod.TakeNotifyRoom,
+    LightServiceMethod.StartPhotoSend,
+    LightServiceMethod.GetMessageMedia,
+    LightServiceMethod.PlayVoiceNote,
+    LightServiceMethod.StartVoiceNoteSend,
 ).associateBy { it.id }
