@@ -248,21 +248,21 @@ class LightSdkService : Service() {
             LightServiceMethod.GetBooks,
             LightServiceMethod.ScanLibrary,
             LightServiceMethod.DeleteBook,
-            LightServiceMethod.SeekToPart,
             LightServiceMethod.GetAutoPlayNext,
             LightServiceMethod.SetAutoPlayNext,
-            LightServiceMethod.PlayBook,
-            LightServiceMethod.OpenBook,
-            LightServiceMethod.PausePlayback,
-            LightServiceMethod.SeekTo,
+            LightServiceMethod.GetPlaybackSpeed,
             LightServiceMethod.SetPlaybackSpeed,
-            LightServiceMethod.GetPlaybackState,
+            LightServiceMethod.GetVolumeLevel,
+            LightServiceMethod.SaveProgress,
+            LightServiceMethod.GetBluetoothConnected,
+            LightServiceMethod.WaitForVolumeChange,
             // Passes methods are additive (Passes companion); the wrapping server
             // app handles them via customServiceMethodResolver.
             LightServiceMethod.GetPasses,
             LightServiceMethod.AddPass,
+            LightServiceMethod.AddCode,
             LightServiceMethod.UpdatePass,
-            LightServiceMethod.DeletePass,
+            LightServiceMethod.DeleteCode,
             LightServiceMethod.GetBarcode,
             // Chats methods are additive (Chats companion); the wrapping server
             // app handles them via customServiceMethodResolver.
@@ -284,7 +284,12 @@ class LightSdkService : Service() {
             LightServiceMethod.VerifyAction,
             LightServiceMethod.RecoverWithKey,
             LightServiceMethod.SetActiveRoom,
-            LightServiceMethod.TakeNotifyRoom -> {
+            LightServiceMethod.TakeNotifyRoom,
+            LightServiceMethod.StartPhotoSend,
+            LightServiceMethod.GetMessageMedia,
+            LightServiceMethod.PlayVoiceNote,
+            LightServiceMethod.StartVoiceNoteSend,
+            LightServiceMethod.SetSyncEnabled -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 

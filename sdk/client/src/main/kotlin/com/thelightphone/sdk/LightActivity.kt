@@ -1,6 +1,7 @@
 package com.thelightphone.sdk
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -62,6 +63,21 @@ class LightActivity internal constructor() : ComponentActivity() {
     private var contentReady = false
     private val createdAt = android.os.SystemClock.elapsedRealtime()
 
+    /**
+     * The launch intent's extras (latest intent wins — re-launches via
+     * [onNewIntent] replace it). Screens consume values with
+     * [SealedLightActivity.takeLaunchExtra]; a value is handed out at most once.
+     */
+    private val launchExtras = mutableMapOf<String, String>()
+
+    internal fun takeLaunchExtra(key: String): String? = launchExtras.remove(key)
+
+    internal fun recordLaunchIntent(intent: Intent) {
+        for (key in intent.extras?.keySet().orEmpty()) {
+            intent.getStringExtra(key)?.let { launchExtras[key] = it }
+        }
+    }
+
     internal fun <T> navigateTo(screen: SimpleLightScreen<T>, resultCallback: ((T) -> Unit)? = null) {
         currentScreen.value?.screen?.notifyWillHide()
         val entry = BackStackEntry(screen, resultCallback)
@@ -95,6 +111,7 @@ class LightActivity internal constructor() : ComponentActivity() {
 
         // Avoids a stale-content flash when resuming from a stopped task (if false)
         setRecentsScreenshotEnabled(LightSdkRegistry.entryPoint?.enableRecentsScreenshots == true)
+        recordLaunchIntent(intent)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val controller = WindowInsetsControllerCompat(window, window.decorView)
@@ -224,6 +241,12 @@ class LightActivity internal constructor() : ComponentActivity() {
         super.onResume()
         currentScreen.value?.screen?.notifyWillShow()
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        recordLaunchIntent(intent)
+    }
 }
 
 class SealedLightContext(internal val androidContext: Context) {
@@ -237,7 +260,16 @@ class SealedLightContext(internal val androidContext: Context) {
  * Wrapper class to pass around an instance of LightActivity without exposing it to
  * user code. Sorry! :)
  */
-class SealedLightActivity(internal val activity: LightActivity)
+class SealedLightActivity(internal val activity: LightActivity) {
+
+    /**
+     * Consume-once read of a string extra from the launch intent (a
+     * notification tap's handoff, e.g. which thread to open). Returns the value
+     * the first time it's called after the intent arrives, then null — a
+     * re-launch (onNewIntent) can supply a new value.
+     */
+    fun takeLaunchExtra(key: String): String? = activity.takeLaunchExtra(key)
+}
 
 internal val Context.dataStore by preferencesDataStore(
     name = "DEFAULT_DATASTORE"

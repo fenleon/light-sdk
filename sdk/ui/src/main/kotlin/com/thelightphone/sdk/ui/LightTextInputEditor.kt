@@ -58,6 +58,12 @@ fun LightTextInputEditor(
     singleLine: Boolean = false,
     initialCaps: Boolean = false,
     editorKey: Any = remember { Any() },
+    inputTextStyle: TextStyle? = null,
+    submitInTopBar: Boolean = false,
+    topBarSubmitIcon: LightIconConfiguration? = null,
+    topBarSubmitLabel: String? = null,
+    bottomAligned: Boolean = false,
+    submitOnReturn: Boolean? = null,
 ) {
     val currentOnSubmit by rememberUpdatedState(onSubmit)
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -65,10 +71,11 @@ fun LightTextInputEditor(
     val currentOnHaptic by rememberUpdatedState {
         if (hapticsEnabled) LightHapticFeedback.click(context)
     }
-    val keyboardCallback = remember(state, singleLine) {
+    val keyboardCallback = remember(state, singleLine, submitOnReturn) {
         TextInputKeyboardCallback(
             state = state,
             singleLine = singleLine,
+            submitOnReturn = submitOnReturn,
             onReturn = { currentOnSubmit(state.text) },
             onHaptic = { currentOnHaptic() },
         )
@@ -90,15 +97,26 @@ fun LightTextInputEditor(
         submitIcon,
         showBackButton,
         singleLine,
+        inputTextStyle,
+        submitInTopBar,
+        topBarSubmitIcon,
+        topBarSubmitLabel,
+        bottomAligned,
+        submitOnReturn,
     )
 }
 
 /**
  * Full-screen text entry matching LightOS `DisplayWithKeyboardPortrait`
  *
- * - Top bar with back button + title
- * - Remaining space shows underlined heading-style input (top-aligned)
- * - Embedded LP3 keyboard, and [LightBottomBar] below it
+ * - Top bar with back button + title (with the submit action in the right slot
+ *   when [submitInTopBar] — the Notes/composer style: keyboard flush at the
+ *   bottom, no bottom bar, maximum input space)
+ * - Remaining space shows underlined heading-style input (top-aligned), or the
+ *   Notes-style input when [bottomAligned]: small text anchored at the bottom,
+ *   lines growing upward as the user types
+ * - Embedded LP3 keyboard, and [LightBottomBar] below it (unless
+ *   [submitInTopBar])
  */
 @Composable
 fun LightTextInputEditor(
@@ -112,9 +130,19 @@ fun LightTextInputEditor(
     submitIcon: LightIconConfiguration? = null,
     showBackButton: Boolean = true,
     singleLine: Boolean = false,
+    inputTextStyle: TextStyle? = null,
+    submitInTopBar: Boolean = false,
+    topBarSubmitIcon: LightIconConfiguration? = null,
+    topBarSubmitLabel: String? = null,
+    bottomAligned: Boolean = false,
+    submitOnReturn: Boolean? = null,
 ) {
     val colors = LightThemeTokens.colors
-    val inputStyle = lightInputTextStyle()
+    val inputStyle = inputTextStyle ?: if (bottomAligned) {
+        lightNotesInputTextStyle()
+    } else {
+        lightInputTextStyle()
+    }
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     Surface {
@@ -129,6 +157,24 @@ fun LightTextInputEditor(
                     null
                 },
                 center = LightTopBarCenter.Text(title),
+                // Notes-style editors (composer, recovery key) move the submit
+                // action into the top bar so the keyboard sits flush at the
+                // bottom and the input gets the full remaining space.
+                rightButton = if (submitInTopBar) {
+                    when {
+                        topBarSubmitIcon != null -> LightBarButton.LightIcon(
+                            icon = topBarSubmitIcon,
+                            onClick = { onSubmit(state.text) },
+                            contentDescription = topBarSubmitLabel ?: submitLabel,
+                        )
+                        else -> LightBarButton.Text(
+                            text = topBarSubmitLabel ?: submitLabel,
+                            onClick = { onSubmit(state.text) },
+                        )
+                    }
+                } else {
+                    null
+                },
                 modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
             )
 
@@ -136,39 +182,61 @@ fun LightTextInputEditor(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 2f.gridUnitsAsDp())
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            textLayout?.let { layout ->
-                                state.edit {
-                                    selection =
-                                        TextRange(layout.getOffsetForPosition(down.position))
-                                }
-                            }
-                            drag(down.id) { change ->
-                                textLayout?.let { layout ->
-                                    state.edit {
-                                        selection =
-                                            TextRange(layout.getOffsetForPosition(change.position))
-                                    }
-                                }
-                                change.consume()
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.TopStart,
+                    .padding(horizontal = 2f.gridUnitsAsDp()),
+                // Notes-style editors anchor the text at the bottom, just above
+                // the keyboard; lines grow upward as the user types.
+                contentAlignment = if (bottomAligned) Alignment.BottomStart else Alignment.TopStart,
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    BasicText(
-                        text = state.text.toString(),
-                        style = inputStyle,
-                        onTextLayout = { textLayout = it },
-                        maxLines = if (singleLine) 1 else Int.MAX_VALUE,
-                        softWrap = !singleLine,
-                        overflow = if (singleLine) TextOverflow.StartEllipsis else TextOverflow.Clip,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // The text + cursor live in their own Box so the cursor
+                    // offset math stays text-relative (bottom-anchored text is
+                    // not at the outer Box's origin), and tap-to-place reads
+                    // the same coordinates.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    textLayout?.let { layout ->
+                                        state.edit {
+                                            selection =
+                                                TextRange(layout.getOffsetForPosition(down.position))
+                                        }
+                                    }
+                                    drag(down.id) { change ->
+                                        textLayout?.let { layout ->
+                                            state.edit {
+                                                selection =
+                                                    TextRange(layout.getOffsetForPosition(change.position))
+                                            }
+                                        }
+                                        change.consume()
+                                    }
+                                }
+                            },
+                    ) {
+                        BasicText(
+                            text = state.text.toString(),
+                            style = inputStyle,
+                            onTextLayout = { textLayout = it },
+                            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                            softWrap = !singleLine,
+                            overflow = if (singleLine) TextOverflow.StartEllipsis else TextOverflow.Clip,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        textLayout?.let { layout ->
+                            val cursorPos = state.selection.min.coerceIn(0, layout.layoutInput.text.length)
+                            val rect = layout.getCursorRect(cursorPos)
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(rect.left.toInt(), rect.top.toInt()) }
+                                    .width(2.dp)
+                                    .height(with(LocalDensity.current) { rect.height.toDp() })
+                                    .background(colors.content),
+                            )
+                        }
+                    }
                     Spacer(
                         modifier = Modifier.height(
                             INPUT_UNDERLINE_GAP_GRID_UNITS.gridUnitsAsDp(),
@@ -181,41 +249,36 @@ fun LightTextInputEditor(
                             .background(colors.content),
                     )
                 }
-                textLayout?.let { layout ->
-                    val cursorPos = state.selection.min.coerceIn(0, layout.layoutInput.text.length)
-                    val rect = layout.getCursorRect(cursorPos)
-                    Box(
-                        modifier = Modifier
-                            .offset { IntOffset(rect.left.toInt(), rect.top.toInt()) }
-                            .width(2.dp)
-                            .height(with(LocalDensity.current) { rect.height.toDp() })
-                            .background(colors.content),
-                    )
-                }
             }
 
-            LightEmbeddedLp3Keyboard(
-                viewModel = viewModel,
-                additionalBottomHeight = 5f.gridUnitsAsDp(),
-                bottomBar = {
-                    LightBottomBar(
-                        topPadding = 0.dp,
-                        items = listOf(
-                            when (submitIcon) {
-                                null -> LightBarButton.Text(
-                                    text = submitLabel,
-                                    onClick = { onSubmit(state.text) },
-                                )
-                                else -> LightBarButton.LightIcon(
-                                    icon = submitIcon,
-                                    onClick = { onSubmit(state.text) },
-                                    contentDescription = submitLabel,
-                                )
-                            },
-                        ),
-                    )
-                }
-            )
+            if (submitInTopBar) {
+                // Notes-style: keyboard flush at the bottom, submit in the top
+                // bar, maximum input space.
+                LightEmbeddedLp3Keyboard(viewModel = viewModel)
+            } else {
+                LightEmbeddedLp3Keyboard(
+                    viewModel = viewModel,
+                    additionalBottomHeight = 5f.gridUnitsAsDp(),
+                    bottomBar = {
+                        LightBottomBar(
+                            topPadding = 0.dp,
+                            items = listOf(
+                                when (submitIcon) {
+                                    null -> LightBarButton.Text(
+                                        text = submitLabel,
+                                        onClick = { onSubmit(state.text) },
+                                    )
+                                    else -> LightBarButton.LightIcon(
+                                        icon = submitIcon,
+                                        onClick = { onSubmit(state.text) },
+                                        contentDescription = submitLabel,
+                                    )
+                                },
+                            ),
+                        )
+                    }
+                )
+            }
         }
     }
 }
@@ -247,6 +310,21 @@ private fun lightInputTextStyle(): TextStyle {
     val colors = LightThemeTokens.colors
     val t = LightThemeTokens.typography
     return t.heading
+        .copy(
+            color = colors.content,
+        )
+        .scaledForScreenHeight()
+}
+
+/**
+ * The Notes-style input: small text (paragraph) so the composer reads like the
+ * LP3 Notes editor, whose lines sit just above the keyboard and grow upward.
+ */
+@Composable
+private fun lightNotesInputTextStyle(): TextStyle {
+    val colors = LightThemeTokens.colors
+    val t = LightThemeTokens.typography
+    return t.paragraph
         .copy(
             color = colors.content,
         )

@@ -47,8 +47,20 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Full-screen QR scanner: live camera preview, dimmed overlay with viewfinder,
- * top-bar back, and [onScanned] with the decoded string.
+ * A barcode decoded by the scanner: the decoded text value, the format as a
+ * lowercase name (e.g. "qr", "aztec", "pdf417", "code128"), and the raw payload
+ * bytes (present when the payload is binary rather than text, e.g. an Aztec
+ * ticketing code).
+ */
+data class LightScannedBarcode(
+    val value: String,
+    val formatName: String,
+    val rawBytes: ByteArray? = null,
+)
+
+/**
+ * Full-screen barcode scanner: live camera preview, dimmed overlay with
+ * viewfinder, top-bar back, and [onScanned] with the decoded string.
  *
  * Host apps must declare [Manifest.permission.CAMERA].
  *
@@ -61,6 +73,37 @@ fun LightQrCodeScanner(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     title: String = "Scan QR Code",
+    checkCameraPermission: suspend () -> Result<Boolean>,
+    launchCameraPermissionRequest: suspend () -> Unit,
+) {
+    LightQrCodeScanner(
+        onScanned = { onScanned(it.value) },
+        onBack = onBack,
+        modifier = modifier,
+        title = title,
+        formats = Barcode.FORMAT_QR_CODE,
+        checkCameraPermission = checkCameraPermission,
+        launchCameraPermissionRequest = launchCameraPermissionRequest,
+    )
+}
+
+/**
+ * Full-screen barcode scanner for any [formats] ML Kit supports (QR, Aztec,
+ * PDF417, Data Matrix, Code 128, EAN/UPC, ... — see [Barcode.FORMAT_ALL_FORMATS]).
+ * [onScanned] receives the decoded code with its format and raw bytes.
+ *
+ * Host apps must declare [Manifest.permission.CAMERA].
+ *
+ * When handling [onScanned], defer navigation to a [LaunchedEffect] (or similar)
+ * and pop the scanner before pushing the next screen, e.g. `goBack()` then `navigateTo(...)`.
+ */
+@Composable
+fun LightQrCodeScanner(
+    onScanned: (LightScannedBarcode) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    title: String = "Scan Code",
+    formats: Int = Barcode.FORMAT_ALL_FORMATS,
     checkCameraPermission: suspend () -> Result<Boolean>,
     launchCameraPermissionRequest: suspend () -> Unit,
 ) {
@@ -98,11 +141,12 @@ fun LightQrCodeScanner(
     ) {
         if (uiState == LightQrUiState.Active) {
             QrCameraPreview(
-                onQrCode = { value ->
+                onScanned = { decoded ->
                     if (scannedOnce.compareAndSet(false, true)) {
-                        onScannedState.value(value)
+                        onScannedState.value(decoded)
                     }
                 },
+                formats = formats,
                 lifecycleOwner = lifecycleOwner,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -159,18 +203,19 @@ fun LightQrCodeScanner(
 
 @Composable
 private fun QrCameraPreview(
-    onQrCode: (String) -> Unit,
+    onScanned: (LightScannedBarcode) -> Unit,
+    formats: Int,
     lifecycleOwner: LifecycleOwner,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val mainExecutor = remember { ContextCompat.getMainExecutor(context) }
-    val onQrCodeState = rememberUpdatedState(onQrCode)
+    val onScannedState = rememberUpdatedState(onScanned)
 
-    val barcodeScanner = remember {
+    val barcodeScanner = remember(formats) {
         BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .setBarcodeFormats(formats)
                 .build(),
         )
     }
@@ -197,13 +242,20 @@ private fun QrCameraPreview(
                 return@MlKitAnalyzer
             }
 
-            val value = barcodes
+            val decoded = barcodes
                 .asSequence()
-                .mapNotNull { it.rawValue ?: it.displayValue }
-                .firstOrNull { it.isNotBlank() }
+                .mapNotNull { barcode ->
+                    val value = barcode.rawValue ?: barcode.displayValue
+                    if (value.isNullOrBlank()) {
+                        null
+                    } else {
+                        LightScannedBarcode(value, formatName(barcode.format), barcode.rawBytes)
+                    }
+                }
+                .firstOrNull()
 
-            if (value != null) {
-                onQrCodeState.value(value)
+            if (decoded != null) {
+                onScannedState.value(decoded)
             }
         }
         cameraController.setImageAnalysisAnalyzer(mainExecutor, analyzer)
@@ -285,4 +337,22 @@ private fun QrViewfinderOverlay(
 
 private enum class LightQrUiState {
     Loading, PermissionError, PermissionDenied, Active
+}
+
+/** ML Kit format constant → lowercase name (matches the Passes format vocabulary). */
+private fun formatName(format: Int): String = when (format) {
+    Barcode.FORMAT_AZTEC -> "aztec"
+    Barcode.FORMAT_PDF417 -> "pdf417"
+    Barcode.FORMAT_DATA_MATRIX -> "datamatrix"
+    Barcode.FORMAT_QR_CODE -> "qr"
+    Barcode.FORMAT_CODE_128 -> "code128"
+    Barcode.FORMAT_CODE_39 -> "code39"
+    Barcode.FORMAT_CODE_93 -> "code93"
+    Barcode.FORMAT_CODABAR -> "codabar"
+    Barcode.FORMAT_EAN_13 -> "ean13"
+    Barcode.FORMAT_EAN_8 -> "ean8"
+    Barcode.FORMAT_UPC_A -> "upc_a"
+    Barcode.FORMAT_UPC_E -> "upc_e"
+    Barcode.FORMAT_ITF -> "itf14"
+    else -> "qr"
 }

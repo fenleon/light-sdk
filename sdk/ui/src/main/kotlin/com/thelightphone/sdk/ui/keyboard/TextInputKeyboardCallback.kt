@@ -9,6 +9,12 @@ import com.thelightphone.lp3Keyboard.ui.viewmodel.Lp3RepeatableKeyboardCallback
 internal class TextInputKeyboardCallback(
     private val state: TextFieldState,
     private val singleLine: Boolean = false,
+    /**
+     * Whether the return key submits instead of inserting a newline. Null =
+     * follow [singleLine] (single-line submits, multi-line inserts a newline).
+     * Lets a wrapping composer (multi-line display) keep return = send.
+     */
+    private val submitOnReturn: Boolean? = null,
     private val onReturn: () -> Unit = {},
     private val onHaptic: () -> Unit = {},
 ) : Lp3RepeatableKeyboardCallback {
@@ -32,7 +38,7 @@ internal class TextInputKeyboardCallback(
                 val before = state.text.subSequence(0, state.selection.min)
                 deleteBeforeCursor(surrogateAwareDeleteCount(before, 1))
             }
-            SpecialKey.Return -> if (singleLine) onReturn() else insertAtCursor("\n")
+            SpecialKey.Return -> if (submitOnReturn ?: singleLine) onReturn() else insertAtCursor("\n")
             else -> Unit
         }
     }

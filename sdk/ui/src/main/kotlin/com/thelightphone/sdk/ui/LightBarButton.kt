@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,13 @@ object LightBarButtonDefaults {
     const val ICON_SIZE_UNITS = 2f
 }
 
+/** Minimum tap-target width for bar-button icons — the 2-unit icon alone is a
+ *  ~27 dp target on the LP3 (well under the ~48 dp touch guideline), which
+ *  made the composer's Send button miss-prone ("needs multiple presses",
+ *  feedback 2026-08-17). The icon keeps its visual size; only the clickable
+ *  area grows. */
+private const val MIN_BAR_BUTTON_TOUCH_WIDTH_UNITS = 3.5f
+
 typealias LightTopBarButton = LightBarButton
 typealias LightBottomBarItem = LightBarButton
 
@@ -91,21 +99,39 @@ internal fun LightBarButtonView(
 
         is LightBarButton.Icon -> {
             val size = button.sizeUnits.gridUnitsAsDp()
-            Image(
-                painter = button.painter,
-                contentDescription = button.contentDescription,
-                contentScale = ContentScale.Fit,
-                modifier = baseModifier.size(size),
-            )
+            // The icon keeps its visual size; only the clickable area grows to
+            // a minimum-width tap target (a bare 2-unit icon ≈ 27 dp is a
+            // miss-prone target — "send needs multiple presses", feedback
+            // 2026-08-17). The icon stays centered, so it shifts at most a
+            // fraction of a unit.
+            Box(
+                modifier = baseModifier.widthIn(
+                    min = maxOf(button.sizeUnits, MIN_BAR_BUTTON_TOUCH_WIDTH_UNITS).gridUnitsAsDp(),
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = button.painter,
+                    contentDescription = button.contentDescription,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(size),
+                )
+            }
         }
 
         is LightBarButton.LightIcon -> {
-            LightIcon(
-                icon = button.icon,
-                size = button.sizeUnits,
-                modifier = baseModifier,
-                contentDescription = button.contentDescription,
-            )
+            Box(
+                modifier = baseModifier.widthIn(
+                    min = maxOf(button.sizeUnits, MIN_BAR_BUTTON_TOUCH_WIDTH_UNITS).gridUnitsAsDp(),
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                LightIcon(
+                    icon = button.icon,
+                    size = button.sizeUnits,
+                    contentDescription = button.contentDescription,
+                )
+            }
         }
     }
 }

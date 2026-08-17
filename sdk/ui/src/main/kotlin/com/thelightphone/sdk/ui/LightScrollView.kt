@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -205,15 +204,15 @@ fun LightLazyScrollView(
             }
         }
     } else {
-        Row(modifier = modifier) {
-            // Outside: the scrollbar is a sibling in the Row, so it already
-            // reserves the gutter — no extra end padding (that would double the
-            // inset and push content ~2 grid units short of the screen edge).
+        // Outside: the scrollbar draws in a permanently-reserved right gutter
+        // (overlay), so content never shifts when the scrollbar appears or the
+        // list stops overflowing.
+        Box(modifier = modifier) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
+                    .fillMaxSize()
+                    .padding(end = SCROLLBAR_WIDTH_UNITS.gridUnitsAsDp()),
                 content = content,
             )
             if (showScrollBar) {
@@ -221,7 +220,9 @@ fun LightLazyScrollView(
                     contentScrollOffsetPx = scrollPx,
                     maxContentScrollOffsetPx = maxScrollPx,
                     onScrollTo = ::scrollToOffsetPx,
-                    modifier = Modifier.fillMaxHeight(),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight(),
                 )
             }
         }

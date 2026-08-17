@@ -55,7 +55,7 @@ private fun variantStyle(variant: LightTextVariant): TextStyle {
 }
 
 @Composable
-internal fun TextStyle.scaledForScreenHeight(): TextStyle {
+fun TextStyle.scaledForScreenHeight(): TextStyle {
     val fontSize = fontSize.scaledForScreenHeight()
     val lineHeight = lineHeight.scaledForScreenHeight()
     val letterSpacing = letterSpacing.scaledForScreenHeight()

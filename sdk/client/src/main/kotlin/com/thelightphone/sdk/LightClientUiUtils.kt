@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.retryWhen
 import kotlin.time.Duration.Companion.milliseconds
 
+/** Re-export so tools import the scanned-code type from the client package. */
+typealias LightScannedBarcode = com.thelightphone.sdk.ui.LightScannedBarcode
+
 /**
  * Wrapper for the UI library's LightQrCodeScanner that include the client library's functions for
  * checking and requesting the camera permission for the SDK server
@@ -123,3 +126,32 @@ internal fun LightNfcAvailability.toTapState(): LightNfcTapState = when (this) {
 }
 
 private val READER_RESTART_DELAY = 500.milliseconds
+
+/**
+ * Like [LightQrCodeScanner] but decodes every barcode format ML Kit supports
+ * (QR, Aztec, PDF417, Data Matrix, Code 128, EAN/UPC, ...) and reports the
+ * format and raw bytes along with the decoded value. Named differently so the
+ * callback type stays unambiguous against [LightQrCodeScanner].
+ */
+@Composable
+fun LightBarcodeScanner(
+    onScanned: (LightScannedBarcode) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    title: String = "Scan Code",
+) {
+    val permissionLauncher = rememberPermissionRequestLauncher(Manifest.permission.CAMERA)
+    LightQrCodeScanner(
+        title = title,
+        onScanned = onScanned,
+        onBack = onBack,
+        modifier = modifier,
+        checkCameraPermission = {
+            checkPermission(Manifest.permission.CAMERA).asKotlinResult
+                .map { it.permissionResult == LightServiceMethod.GetPermission.Result.Granted }
+        },
+        launchCameraPermissionRequest = {
+            permissionLauncher?.launch()
+        }
+    )
+}

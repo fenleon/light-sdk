@@ -165,6 +165,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Part(
             val title: String,
             val durationMs: Long,
+            /** Playback reference for this part (a content URI the player can open). */
+            val playbackReference: String = "",
             /** Embedded chapters (MP3 CHAP frames / M4B bookmarks) within this part. Default empty — backward compatible. */
             val chapters: List<Chapter> = emptyList(),
         )
@@ -177,6 +179,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val durationMs: Long,
             val progressMs: Long,
             val partCount: Int,
+            /** Playback reference for single-file books (folder books reference their parts). */
+            val playbackReference: String = "",
             val parts: List<Part> = emptyList(),
         )
 
@@ -213,19 +217,6 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
     }
 
-    /**
-     * Jumps to a part (chapter) on the already-loaded book, preserving the
-     * current play/pause state — switching chapters never starts playback.
-     */
-    object SeekToPart : LightServiceMethod<SeekToPart.Request, Unit> {
-        override val id = "SeekToPart"
-        override val requestSerializer = serializer<Request>()
-        override val responseSerializer = serializer<Unit>()
-
-        @Serializable
-        data class Request(val partIndex: Int)
-    }
-
     /** Whether playback should continue into the next chapter when one ends. */
     object GetAutoPlayNext : LightServiceMethod<Unit, GetAutoPlayNext.Response> {
         override val id = "GetAutoPlayNext"
@@ -245,46 +236,14 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Request(val enabled: Boolean)
     }
 
-    object PlayBook : LightServiceMethod<PlayBook.Request, Unit> {
-        override val id = "PlayBook"
-        override val requestSerializer = serializer<Request>()
-        override val responseSerializer = serializer<Unit>()
-
-        @Serializable
-        data class Request(
-            val bookId: String,
-            val partIndex: Int = 0,
-            val positionMs: Long = 0,
-        )
-    }
-
-    /** Loads a book paused at its saved position (the player opens, nothing plays). */
-    object OpenBook : LightServiceMethod<OpenBook.Request, Unit> {
-        override val id = "OpenBook"
-        override val requestSerializer = serializer<Request>()
-        override val responseSerializer = serializer<Unit>()
-
-        @Serializable
-        data class Request(
-            val bookId: String,
-            val partIndex: Int = 0,
-            val positionMs: Long = 0,
-        )
-    }
-
-    object PausePlayback : LightServiceMethod<Unit, Unit> {
-        override val id = "PausePlayback"
+    /** The global playback speed, persisted by the companion. */
+    object GetPlaybackSpeed : LightServiceMethod<Unit, GetPlaybackSpeed.Response> {
+        override val id = "GetPlaybackSpeed"
         override val requestSerializer = serializer<Unit>()
-        override val responseSerializer = serializer<Unit>()
-    }
-
-    object SeekTo : LightServiceMethod<SeekTo.Request, Unit> {
-        override val id = "SeekTo"
-        override val requestSerializer = serializer<Request>()
-        override val responseSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
 
         @Serializable
-        data class Request(val positionMs: Long)
+        data class Response(val speed: Float)
     }
 
     object SetPlaybackSpeed : LightServiceMethod<SetPlaybackSpeed.Request, Unit> {
@@ -296,22 +255,61 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Request(val speed: Float)
     }
 
-    object GetPlaybackState : LightServiceMethod<Unit, GetPlaybackState.Response> {
-        override val id = "GetPlaybackState"
+    /** Whether a Bluetooth audio device is connected (drives the connected-BT icon). */
+    object GetBluetoothConnected : LightServiceMethod<Unit, GetBluetoothConnected.Response> {
+        override val id = "GetBluetoothConnected"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val connected: Boolean)
+    }
+
+    /**
+     * Blocks until the media-stream volume changes (or [WAIT_TIMEOUT_MS]
+     * elapses), then reports the current level — a long-poll so the volume
+     * panel can react instantly to a BT device's own volume buttons (AVRCP)
+     * instead of polling. Returns immediately when [Request.knownLevel]
+     * already differs from the current level.
+     */
+    object WaitForVolumeChange : LightServiceMethod<WaitForVolumeChange.Request, WaitForVolumeChange.Response> {
+        override val id = "WaitForVolumeChange"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val knownLevel: Int)
+
+        @Serializable
+        data class Response(val level: Int, val max: Int)
+
+        const val WAIT_TIMEOUT_MS = 2_000L
+    }
+
+    /** The current media-stream volume level and its maximum (the LP3's media stream is 0–14). */
+    object GetVolumeLevel : LightServiceMethod<Unit, GetVolumeLevel.Response> {
+        override val id = "GetVolumeLevel"
         override val requestSerializer = serializer<Unit>()
         override val responseSerializer = serializer<Response>()
 
         @Serializable
         data class Response(
-            val bookId: String? = null,
-            val title: String? = null,
-            val author: String? = null,
-            val partIndex: Int = 0,
-            val partCount: Int = 0,
-            val partTitle: String? = null,
+            val level: Int,
+            val max: Int,
+        )
+    }
+
+    /** Reports a book's listening position to the companion for persistence. */
+    object SaveProgress : LightServiceMethod<SaveProgress.Request, Unit> {
+        override val id = "SaveProgress"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(
+            val bookId: String,
             val positionMs: Long = 0,
             val durationMs: Long = 0,
-            val playing: Boolean = false,
             val speed: Float = 1.0f,
         )
     }
@@ -607,6 +605,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * renders them as a small tag under the message.
              */
             val reactions: List<String> = emptyList(),
+            /**
+             * Voice-note length in milliseconds (the m.audio event's info
+             * duration). Null for non-audio rows; the tool shows it on the row
+             * and counts up to it while the note plays.
+             */
+            val durationMs: Long? = null,
         )
 
         @Serializable
@@ -631,6 +635,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * can highlight the row that's playing without an extra RPC.
              */
             val audioPlayingEventId: String? = null,
+            /**
+             * Playback position (ms) of the currently playing voice note
+             * ([audioPlayingEventId]); null when nothing is playing. The tool
+             * interpolates between polls so the counter runs smoothly.
+             */
+            val audioPositionMs: Long? = null,
         )
     }
 
@@ -693,6 +703,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val roomsTotal: Int = 0,
             /** Rooms whose name/preview have been resolved in the background so far. */
             val roomsResolved: Int = 0,
+            /** Whether the companion's sync loop is running (Settings → Sync toggle). */
+            val syncEnabled: Boolean = true,
         )
     }
 
@@ -904,6 +916,24 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         @Serializable
         data class Response(val activityComponent: String)
     }
+
+    /**
+     * Pauses/resumes the companion's Matrix sync loop + foreground service
+     * (Settings → Sync, audit 2026-08-14). Pausing stops all background sync
+     * work — the escape hatch when sync is draining the battery or the account
+     * is misbehaving; messages arrive again once it is re-enabled.
+     */
+    object SetSyncEnabled : LightServiceMethod<SetSyncEnabled.Request, SetSyncEnabled.Response> {
+        override val id = "SetSyncEnabled"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val enabled: Boolean)
+
+        @Serializable
+        data class Response(val ok: Boolean)
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -919,15 +949,14 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetBooks,
     LightServiceMethod.ScanLibrary,
     LightServiceMethod.DeleteBook,
-    LightServiceMethod.SeekToPart,
     LightServiceMethod.GetAutoPlayNext,
     LightServiceMethod.SetAutoPlayNext,
-    LightServiceMethod.PlayBook,
-    LightServiceMethod.OpenBook,
-    LightServiceMethod.PausePlayback,
-    LightServiceMethod.SeekTo,
+    LightServiceMethod.GetPlaybackSpeed,
     LightServiceMethod.SetPlaybackSpeed,
-    LightServiceMethod.GetPlaybackState,
+    LightServiceMethod.GetBluetoothConnected,
+    LightServiceMethod.WaitForVolumeChange,
+    LightServiceMethod.GetVolumeLevel,
+    LightServiceMethod.SaveProgress,
     LightServiceMethod.GetPasses,
     LightServiceMethod.AddPass,
     LightServiceMethod.AddCode,
@@ -957,4 +986,5 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetMessageMedia,
     LightServiceMethod.PlayVoiceNote,
     LightServiceMethod.StartVoiceNoteSend,
+    LightServiceMethod.SetSyncEnabled,
 ).associateBy { it.id }
