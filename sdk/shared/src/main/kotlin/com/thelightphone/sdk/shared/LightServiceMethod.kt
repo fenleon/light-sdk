@@ -611,6 +611,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * and counts up to it while the note plays.
              */
             val durationMs: Long? = null,
+            /**
+             * Caption of an image message (the m.image event's body — most
+             * clients put the caption there; the file name is a separate
+             * field). Null for non-image rows and caption-less photos. The
+             * tool renders it under the thumbnail.
+             */
+            val caption: String? = null,
         )
 
         @Serializable

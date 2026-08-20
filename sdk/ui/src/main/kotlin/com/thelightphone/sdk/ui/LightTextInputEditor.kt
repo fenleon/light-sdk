@@ -63,6 +63,7 @@ fun LightTextInputEditor(
     topBarSubmitIcon: LightIconConfiguration? = null,
     topBarSubmitLabel: String? = null,
     bottomAligned: Boolean = false,
+    centered: Boolean = false,
     submitOnReturn: Boolean? = null,
 ) {
     val currentOnSubmit by rememberUpdatedState(onSubmit)
@@ -102,6 +103,7 @@ fun LightTextInputEditor(
         topBarSubmitIcon,
         topBarSubmitLabel,
         bottomAligned,
+        centered,
         submitOnReturn,
     )
 }
@@ -135,6 +137,7 @@ fun LightTextInputEditor(
     topBarSubmitIcon: LightIconConfiguration? = null,
     topBarSubmitLabel: String? = null,
     bottomAligned: Boolean = false,
+    centered: Boolean = false,
     submitOnReturn: Boolean? = null,
 ) {
     val colors = LightThemeTokens.colors
@@ -183,9 +186,14 @@ fun LightTextInputEditor(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 2f.gridUnitsAsDp()),
-                // Notes-style editors anchor the text at the bottom, just above
-                // the keyboard; lines grow upward as the user types.
-                contentAlignment = if (bottomAligned) Alignment.BottomStart else Alignment.TopStart,
+                // Top-aligned by default; Notes-style editors anchor the text
+                // at the bottom (lines grow upward); centered vertically
+                // between the top bar and the keyboard when [centered].
+                contentAlignment = when {
+                    bottomAligned -> Alignment.BottomStart
+                    centered -> Alignment.CenterStart
+                    else -> Alignment.TopStart
+                },
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // The text + cursor live in their own Box so the cursor
