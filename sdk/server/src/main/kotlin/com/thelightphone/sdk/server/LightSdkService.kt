@@ -282,6 +282,7 @@ class LightSdkService : Service() {
             LightServiceMethod.GetRooms,
             LightServiceMethod.GetMessages,
             LightServiceMethod.SendMessage,
+            LightServiceMethod.RetrySend,
             LightServiceMethod.MarkRead,
             LightServiceMethod.SetTyping,
             LightServiceMethod.GetConnectionState,

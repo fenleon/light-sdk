@@ -704,6 +704,21 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Request(val roomId: String, val eventId: String)
     }
 
+    /**
+     * Re-sends a message that failed to leave the device: clears the outbox
+     * error on [Request.transactionId], so Trixnity re-sends the same
+     * transaction (idempotent — no duplicate event if it had reached the
+     * homeserver). The tool offers this on rows marked locally failed.
+     */
+    object RetrySend : LightServiceMethod<RetrySend.Request, Unit> {
+        override val id = "RetrySend"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val transactionId: String)
+    }
+
     object SetTyping : LightServiceMethod<SetTyping.Request, Unit> {
         override val id = "SetTyping"
         override val requestSerializer = serializer<Request>()
@@ -1094,6 +1109,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetRooms,
     LightServiceMethod.GetMessages,
     LightServiceMethod.SendMessage,
+    LightServiceMethod.RetrySend,
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,
     LightServiceMethod.GetConnectionState,
