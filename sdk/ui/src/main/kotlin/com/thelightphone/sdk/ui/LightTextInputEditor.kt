@@ -1,5 +1,7 @@
 package com.thelightphone.sdk.ui
 
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -7,6 +9,10 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions as TextFieldKeyboardOptions
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
@@ -21,11 +27,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -71,12 +83,21 @@ fun LightTextInputEditor(
     bottomAligned: Boolean = false,
     centered: Boolean = false,
     submitOnReturn: Boolean? = null,
+    preferSystemIme: Boolean = true,
 ) {
     val currentOnSubmit by rememberUpdatedState(onSubmit)
     val hapticsEnabled = LocalHapticsEnabled.current
     val context = LocalContext.current
     val currentOnHaptic by rememberUpdatedState {
         if (hapticsEnabled) LightHapticFeedback.click(context)
+    }
+    // LightOS ships with no enabled IME at all, so the embedded LP3 keyboard
+    // below is the only input path on a stock device. When the user has
+    // enabled one (e.g. the Light keyboard app), prefer it and fall back to
+    // embedded only when none is available.
+    val useSystemIme = preferSystemIme && remember {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.enabledInputMethodList.isNotEmpty()
     }
     val keyboardCallback = remember(state, singleLine, submitOnReturn) {
         TextInputKeyboardCallback(
@@ -111,6 +132,8 @@ fun LightTextInputEditor(
         bottomAligned,
         centered,
         submitOnReturn,
+        initialCaps,
+        useSystemIme,
     )
 }
 
@@ -124,7 +147,10 @@ fun LightTextInputEditor(
  *   Notes-style input when [bottomAligned]: small text anchored at the bottom,
  *   lines growing upward as the user types
  * - Embedded LP3 keyboard, and [LightBottomBar] below it (unless
- *   [submitInTopBar])
+ *   [submitInTopBar]). When [useSystemIme] a focusable field is rendered
+ *   instead and the system IME replaces the embedded keyboard (the caller's
+ *   preference flag AND-ed with "an IME is enabled" — stock LightOS has none,
+ *   so embedded stays the fallback there).
  */
 @Composable
 fun LightTextInputEditor(
@@ -145,6 +171,8 @@ fun LightTextInputEditor(
     bottomAligned: Boolean = false,
     centered: Boolean = false,
     submitOnReturn: Boolean? = null,
+    initialCaps: Boolean = false,
+    useSystemIme: Boolean = false,
 ) {
     val colors = LightThemeTokens.colors
     val inputStyle = inputTextStyle ?: if (bottomAligned) {
@@ -224,6 +252,53 @@ fun LightTextInputEditor(
                         ),
                     verticalArrangement = if (bottomAligned) Arrangement.Bottom else Arrangement.Top,
                 ) {
+                    if (useSystemIme) {
+                        // A real focusable field: the platform shows the IME
+                        // on focus, and IME commits/edits flow straight into
+                        // the same TextFieldState the embedded keyboard writes
+                        // to, so callers don't care which path produced the
+                        // text. Return submits single-line fields, matching
+                        // TextInputKeyboardCallback's submitOnReturn rule.
+                        val focusRequester = remember { FocusRequester() }
+                        val keyboardController = LocalSoftwareKeyboardController.current
+                        BasicTextField(
+                            state = state,
+                            textStyle = inputStyle,
+                            keyboardOptions = TextFieldKeyboardOptions(
+                                capitalization = if (initialCaps) {
+                                    KeyboardCapitalization.Sentences
+                                } else {
+                                    KeyboardCapitalization.None
+                                },
+                                autoCorrect = true,
+                                imeAction = if (submitOnReturn ?: singleLine) {
+                                    ImeAction.Done
+                                } else {
+                                    ImeAction.Default
+                                },
+                            ),
+                            onKeyboardAction = KeyboardActionHandler { performDefaultAction ->
+                                if (submitOnReturn ?: singleLine) {
+                                    onSubmit(state.text)
+                                } else {
+                                    performDefaultAction()
+                                }
+                            },
+                            lineLimits = if (singleLine) {
+                                TextFieldLineLimits.SingleLine
+                            } else {
+                                TextFieldLineLimits.MultiLine()
+                            },
+                            cursorBrush = SolidColor(colors.content),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                        )
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
+                    } else {
                     // The text + cursor live in their own Box so the cursor
                     // offset math stays text-relative (bottom-anchored text is
                     // not at the outer Box's origin), and tap-to-place reads
@@ -283,6 +358,7 @@ fun LightTextInputEditor(
                             )
                         }
                     }
+                    }
                     Spacer(
                         modifier = Modifier.height(
                             INPUT_UNDERLINE_GAP_GRID_UNITS.gridUnitsAsDp(),
@@ -297,7 +373,35 @@ fun LightTextInputEditor(
                 }
             }
 
-            if (submitInTopBar) {
+            if (useSystemIme) {
+                // No embedded keys: the system IME overlays the bottom of the
+                // screen. The submit affordance the embedded keyboard carried
+                // down here still has to exist — keep the bottom bar for
+                // single-line fields, or the reserved 5-gu row that callers
+                // (e.g. chats' composer X) anchor into — and lift everything
+                // above the IME via imePadding (zero when the IME is hidden).
+                if (!submitInTopBar) {
+                    LightBottomBar(
+                        topPadding = 0.dp,
+                        items = listOf(
+                            when (submitIcon) {
+                                null -> LightBarButton.Text(
+                                    text = submitLabel,
+                                    onClick = { onSubmit(state.text) },
+                                )
+                                else -> LightBarButton.LightIcon(
+                                    icon = submitIcon,
+                                    onClick = { onSubmit(state.text) },
+                                    contentDescription = submitLabel,
+                                )
+                            },
+                        ),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(5f.gridUnitsAsDp()))
+                }
+                Spacer(modifier = Modifier.imePadding())
+            } else if (submitInTopBar) {
                 // Notes-style: keyboard flush at the bottom, submit in the top
                 // bar, maximum input space. The 5-gu bottom-bar row is still
                 // reserved below the keys (LP3-verified 2026-08-21: the
