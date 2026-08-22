@@ -141,6 +141,13 @@ class LightSdkService : Service() {
                 )
             }
 
+            // LightOS's mollysocket push endpoint (beta; added by the radio
+            // session 2026-08-21) — the embedding server (com.lightos / the
+            // emulator) answers it via customServiceMethodResolver.
+            LightServiceMethod.GetMollySocketUri -> {
+                LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
+            }
+
             LightServiceMethod.SetRingtone -> {
                 val request = LightServiceMethod.SetRingtone.decodeRequest(payload!!)
                 RingtoneManager.setActualDefaultRingtoneUri(
@@ -289,7 +296,12 @@ class LightSdkService : Service() {
             LightServiceMethod.GetMessageMedia,
             LightServiceMethod.PlayVoiceNote,
             LightServiceMethod.StartVoiceNoteSend,
-            LightServiceMethod.SetSyncEnabled -> {
+            LightServiceMethod.SetSyncEnabled,
+            // Passkey methods are additive (Passkey companion); the wrapping
+            // server app handles them via customServiceMethodResolver.
+            LightServiceMethod.StartPasskeySession,
+            LightServiceMethod.StopSession,
+            LightServiceMethod.GetSessionState -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 

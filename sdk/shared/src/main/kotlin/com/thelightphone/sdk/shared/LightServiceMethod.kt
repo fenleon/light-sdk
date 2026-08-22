@@ -89,6 +89,17 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         )
     }
 
+    // LightOS's mollysocket push endpoint for this device (beta). The emulator
+    // serves a configurable fake; real LightOS answers per-device.
+    object GetMollySocketUri : LightServiceMethod<Unit, GetMollySocketUri.Response> {
+        override val id = "GetMollySocketUri"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val mollySocketUri: String)
+    }
+
     object GetPermission : LightServiceMethod<GetPermission.Request, GetPermission.Response> {
         enum class Result {
             Unknown, BlockedByServer, Granted, Denied
@@ -545,6 +556,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             /** Direct (1:1) chat — the thread can hide per-message sender names. */
             val isDirect: Boolean = false,
             /**
+             * The room's other participant for 1:1s — the single non-bot hero
+             * (Beeper bridged DMs list the contact; bridge bots like
+             * @whatsappbot are excluded). Null for groups. Drives the contact
+             * overlay's phone/username line (chats, feedback 2026-08-21).
+             */
+            val contactId: String? = null,
+            /**
              * Bridged network label ("WhatsApp", "Instagram", …), derived by the
              * companion from Beeper's per-network spaces. Null = not in any
              * space (Beeper-internal rooms, user-created spaces stay ungrouped).
@@ -941,6 +959,50 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         @Serializable
         data class Response(val ok: Boolean)
     }
+
+    // --- Passkey methods (local, additive addition for the Passkey companion;
+    // upstreamable — production com.lightos should implement these for a real LP3).
+    /**
+     * Starts a caBLE v2 hybrid sign-in session in the companion from the
+     * desktop's scanned QR payload (the FIDO:/… digits string): opens the
+     * tunnel, advertises the EID, answers the KNpsk0 handshake, and dispatches
+     * CTAP MakeCredential/GetAssertion frames through the authenticator. UV is
+     * prompted via a companion UV activity when a frame requires it.
+     */
+    object StartPasskeySession : LightServiceMethod<StartPasskeySession.Request, StartPasskeySession.Response> {
+        override val id = "StartPasskeySession"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val qrPayload: String)
+
+        @Serializable
+        data class Response(val ok: Boolean, val error: String? = null)
+    }
+
+    object StopSession : LightServiceMethod<Unit, Unit> {
+        override val id = "StopSession"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Unit>()
+    }
+
+    /** The passkey session's live state, for the tool's status view. */
+    object GetSessionState : LightServiceMethod<Unit, GetSessionState.Response> {
+        override val id = "GetSessionState"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(
+            /** "idle" | "running" | "done" | "error" */
+            val state: String,
+            /** Recent status lines, newest last (the scanner/status view). */
+            val lines: List<String>,
+            /** Short outcome line when the session ended ("Signed in", "Passkey created", …). */
+            val summary: String? = null,
+        )
+    }
 }
 
 val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
@@ -994,4 +1056,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.PlayVoiceNote,
     LightServiceMethod.StartVoiceNoteSend,
     LightServiceMethod.SetSyncEnabled,
+    LightServiceMethod.StartPasskeySession,
+    LightServiceMethod.StopSession,
+    LightServiceMethod.GetSessionState,
 ).associateBy { it.id }

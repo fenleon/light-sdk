@@ -5,16 +5,20 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +37,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thelightphone.lp3Keyboard.ui.*
 import com.thelightphone.lp3Keyboard.ui.viewmodel.EnQwertyLp3KeyboardViewModel
+import kotlin.math.abs
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.thelightphone.lp3Keyboard.ui.viewmodel.Lp3KeyboardViewModel
 import com.thelightphone.lp3Keyboard.ui.viewmodel.Lp3RepeatableKeyboardCallback
 import com.thelightphone.lp3Keyboard.ui.viewmodel.defaultEmojis
@@ -190,12 +196,34 @@ fun LightTextInputEditor(
                 // at the bottom (lines grow upward); centered vertically
                 // between the top bar and the keyboard when [centered].
                 contentAlignment = when {
-                    bottomAligned -> Alignment.BottomStart
                     centered -> Alignment.CenterStart
                     else -> Alignment.TopStart
                 },
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                // Notes-style input (bottomAligned): short text sits at the
+                // bottom and grows upward; once the draft outgrows the panel
+                // it scrolls instead of spilling past the keyboard — pinned
+                // to the newest line while typing, freely scrollable to read
+                // earlier lines (feedback 2026-08-21). Other modes keep the
+                // plain wrap-content column positioned by the outer Box.
+                val scrollState = rememberScrollState()
+                LaunchedEffect(Unit) {
+                    snapshotFlow { scrollState.maxValue }
+                        .distinctUntilChanged()
+                        .collect { max -> if (max > 0) scrollState.scrollTo(max) }
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (bottomAligned) {
+                                Modifier.fillMaxHeight().verticalScroll(scrollState)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    verticalArrangement = if (bottomAligned) Arrangement.Bottom else Arrangement.Top,
+                ) {
                     // The text + cursor live in their own Box so the cursor
                     // offset math stays text-relative (bottom-anchored text is
                     // not at the outer Box's origin), and tap-to-place reads
@@ -213,13 +241,23 @@ fun LightTextInputEditor(
                                         }
                                     }
                                     drag(down.id) { change ->
-                                        textLayout?.let { layout ->
-                                            state.edit {
-                                                selection =
-                                                    TextRange(layout.getOffsetForPosition(change.position))
+                                        val delta = change.position - change.previousPosition
+                                        // Only mostly-horizontal drags move the
+                                        // cursor; vertical drags must pass
+                                        // through to the scrollable draft so a
+                                        // long message can be scrolled to read
+                                        // (feedback 2026-08-22: the selection
+                                        // gesture consumed every drag).
+                                        if (abs(delta.y) <= abs(delta.x)) {
+                                            textLayout?.let { layout ->
+                                                state.edit {
+                                                    selection = TextRange(
+                                                        layout.getOffsetForPosition(change.position),
+                                                    )
+                                                }
                                             }
+                                            change.consume()
                                         }
-                                        change.consume()
                                     }
                                 }
                             },
@@ -261,8 +299,16 @@ fun LightTextInputEditor(
 
             if (submitInTopBar) {
                 // Notes-style: keyboard flush at the bottom, submit in the top
-                // bar, maximum input space.
-                LightEmbeddedLp3Keyboard(viewModel = viewModel)
+                // bar, maximum input space. The 5-gu bottom-bar row is still
+                // reserved below the keys (LP3-verified 2026-08-21: the
+                // composer's clear-draft X overlapped the keyboard's bottom
+                // row when the keys ran flush to the screen edge). The zone
+                // is empty here; apps like chats' composer place their action
+                // (the X) there with a BottomEnd alignment.
+                LightEmbeddedLp3Keyboard(
+                    viewModel = viewModel,
+                    additionalBottomHeight = 5f.gridUnitsAsDp(),
+                )
             } else {
                 LightEmbeddedLp3Keyboard(
                     viewModel = viewModel,
