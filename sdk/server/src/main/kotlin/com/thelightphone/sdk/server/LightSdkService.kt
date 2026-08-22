@@ -301,7 +301,10 @@ class LightSdkService : Service() {
             // server app handles them via customServiceMethodResolver.
             LightServiceMethod.StartPasskeySession,
             LightServiceMethod.StopSession,
-            LightServiceMethod.GetSessionState -> {
+            LightServiceMethod.GetSessionState,
+            LightServiceMethod.ListPasskeys,
+            LightServiceMethod.DeletePasskey,
+            LightServiceMethod.PickAccount -> {
                 LightSdkServer.customServiceMethodResolver.invoke(callingUid, methodId, payload)
             }
 

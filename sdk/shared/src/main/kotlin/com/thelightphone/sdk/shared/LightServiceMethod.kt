@@ -995,13 +995,66 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
 
         @Serializable
         data class Response(
-            /** "idle" | "running" | "done" | "error" */
+            /** "idle" | "running" | "pick" | "done" | "error" */
             val state: String,
             /** Recent status lines, newest last (the scanner/status view). */
             val lines: List<String>,
             /** Short outcome line when the session ended ("Signed in", "Passkey created", …). */
             val summary: String? = null,
+            /**
+             * Candidate user names when [state] == "pick" — a GetAssertion
+             * matched more than one credential for the RP and the tool must ask
+             * which account to sign in as (PickAccount by index).
+             */
+            val candidates: List<String> = emptyList(),
         )
+    }
+
+    /** One passkey's metadata row, for the tool's list screen. */
+    @Serializable
+    data class CredentialInfo(
+        /** Base64url credential id (also the Keystore alias suffix). */
+        val credentialId: String,
+        val rpId: String,
+        val userName: String,
+        /** Epoch millis; 0 = legacy row created before timestamps were stored. */
+        val createdAt: Long,
+        /** Epoch millis; 0 = never used for a sign-in yet. */
+        val lastUsedAt: Long,
+    )
+
+    /** The stored passkeys, newest first, for the tool's list screen. */
+    object ListPasskeys : LightServiceMethod<Unit, ListPasskeys.Response> {
+        override val id = "ListPasskeys"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val credentials: List<CredentialInfo> = emptyList())
+    }
+
+    /** Deletes a stored passkey (Keystore key + metadata row). No-op when unknown. */
+    object DeletePasskey : LightServiceMethod<DeletePasskey.Request, Unit> {
+        override val id = "DeletePasskey"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val credentialId: String)
+    }
+
+    /**
+     * Answers a pending account picker ("pick" session state): selects the
+     * credential at [Request.index] of the state's candidates. -1 cancels the
+     * GetAssertion (CTAP_ERR_OPERATION_DENIED). No-op when no pick is pending.
+     */
+    object PickAccount : LightServiceMethod<PickAccount.Request, Unit> {
+        override val id = "PickAccount"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val index: Int)
     }
 }
 
@@ -1059,4 +1112,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.StartPasskeySession,
     LightServiceMethod.StopSession,
     LightServiceMethod.GetSessionState,
+    LightServiceMethod.ListPasskeys,
+    LightServiceMethod.DeletePasskey,
+    LightServiceMethod.PickAccount,
 ).associateBy { it.id }
