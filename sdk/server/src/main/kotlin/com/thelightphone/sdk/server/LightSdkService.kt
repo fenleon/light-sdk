@@ -293,6 +293,7 @@ class LightSdkService : Service() {
             LightServiceMethod.RecoverWithKey,
             LightServiceMethod.SetActiveRoom,
             LightServiceMethod.TakeNotifyRoom,
+            LightServiceMethod.SetRoomMuted,
             LightServiceMethod.StartPhotoSend,
             LightServiceMethod.GetMessageMedia,
             LightServiceMethod.PlayVoiceNote,

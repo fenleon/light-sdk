@@ -563,11 +563,26 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              */
             val contactId: String? = null,
             /**
+             * The contact's phone number for 1:1s, when the room data carries
+             * one: a @whatsapp_<number> ghost, or the number the bridge used
+             * as the displayname before syncing the profile name (the LID
+             * ghost's member event prev_content). Null otherwise — not every
+             * contact exposes the number in room data (chats, feedback
+             * 2026-08-23).
+             */
+            val contactPhone: String? = null,
+            /**
              * Bridged network label ("WhatsApp", "Instagram", …), derived by the
              * companion from Beeper's per-network spaces. Null = not in any
              * space (Beeper-internal rooms, user-created spaces stay ungrouped).
              */
             val network: String? = null,
+            /**
+             * The user muted this room in the tool (chats): its messages stop
+             * notifying; the unread badge and room list stay. Set via
+             * [SetRoomMuted].
+             */
+            val muted: Boolean = false,
         )
 
         @Serializable
@@ -726,6 +741,16 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
 
         @Serializable
         data class Request(val roomId: String, val active: Boolean)
+    }
+
+    /** Mutes or unmutes a room's notifications (chats, 2026-08-23). */
+    object SetRoomMuted : LightServiceMethod<SetRoomMuted.Request, Unit> {
+        override val id = "SetRoomMuted"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val muted: Boolean)
     }
 
     /** Companion connection state, for the tool's Settings/status display. */
@@ -1112,6 +1137,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.RetrySend,
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,
+    LightServiceMethod.SetRoomMuted,
     LightServiceMethod.GetConnectionState,
     LightServiceMethod.GetE2eeState,
     LightServiceMethod.StartDeviceVerification,
