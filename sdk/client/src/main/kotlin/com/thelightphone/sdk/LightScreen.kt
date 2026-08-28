@@ -45,6 +45,15 @@ abstract class SimpleLightScreen<ResultType>(sealedActivity: SealedLightActivity
     }
 
     /**
+     * Window-level brightness control (e.g. a tool's fullscreen code
+     * presentation: max on show, restore on exit). The SDK keeps `activity`
+     * internal to tool code, so this is the sanctioned path.
+     */
+    fun setScreenBrightness(brightness: Float?) {
+        activity.setScreenBrightness(brightness)
+    }
+
+    /**
      * Starts an activity in the companion server package (e.g. a consent or
      * settings screen). Tools cannot call startActivity directly (the SDK
      * plugin forbids it); this is the sanctioned path, mirroring the

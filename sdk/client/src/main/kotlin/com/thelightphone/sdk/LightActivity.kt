@@ -247,6 +247,38 @@ class LightActivity internal constructor() : ComponentActivity() {
         setIntent(intent)
         recordLaunchIntent(intent)
     }
+
+    /** The window's brightness before the first [setScreenBrightness] override
+     *  (-1 = follow the system setting), so a null override can restore it. */
+    private var windowBrightnessBeforeOverride = -1f
+
+    /** Whether [windowBrightnessBeforeOverride] holds a real capture yet. A
+     *  second override (e.g. `willShow` on activity resume) must not re-capture
+     *  the current override as the "before" value, or the restore writes the
+     *  override itself and the window sticks at it (LP3-verified 2026-08-28:
+     *  Passes' fullscreen left the screen pinned at max brightness). */
+    private var hasBrightnessOverride = false
+
+    /**
+     * Overrides the window brightness (0..1) — e.g. max for a code presentation
+     * — or restores the previous value when null. Window-level, so it never
+     * touches the system brightness setting. Sets the window attribute from
+     * whatever thread calls it (the attribute write is thread-safe).
+     */
+    fun setScreenBrightness(brightness: Float?) {
+        val params = window.attributes
+        if (brightness == null) {
+            params.screenBrightness = windowBrightnessBeforeOverride
+            hasBrightnessOverride = false
+        } else {
+            if (!hasBrightnessOverride) {
+                windowBrightnessBeforeOverride = params.screenBrightness
+                hasBrightnessOverride = true
+            }
+            params.screenBrightness = brightness
+        }
+        runCatching { window.attributes = params }
+    }
 }
 
 class SealedLightContext(internal val androidContext: Context) {
@@ -269,6 +301,11 @@ class SealedLightActivity(internal val activity: LightActivity) {
      * re-launch (onNewIntent) can supply a new value.
      */
     fun takeLaunchExtra(key: String): String? = activity.takeLaunchExtra(key)
+
+    /** Overrides the window brightness (0..1), or restores the previous value
+     *  when null (e.g. a tool's fullscreen code presentation → max on show,
+     *  restore on exit). */
+    fun setScreenBrightness(brightness: Float?) = activity.setScreenBrightness(brightness)
 }
 
 internal val Context.dataStore by preferencesDataStore(
