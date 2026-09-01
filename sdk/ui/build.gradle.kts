@@ -52,8 +52,12 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    implementation(libs.androidx.camera.mlkit.vision)
-    implementation(libs.mlkit.barcode.scanning)
+    // Camera-side decode (Binary Eye's wrapper around zxing-cpp): the decoded
+    // symbol's bit matrix (Result.symbol) lets tools render the exact original
+    // barcode instead of re-encoding the payload. (The former ML Kit decoder —
+    // mlkit-barcode-scanning + camera-mlkit-vision — was dropped with it; the
+    // `formats` bitmask API it defined is kept, see LightQrCodeScanner.)
+    implementation(libs.zxing.cpp)
     api(platform(libs.compose.bom))
     api(libs.compose.ui)
     api(libs.compose.ui.graphics)

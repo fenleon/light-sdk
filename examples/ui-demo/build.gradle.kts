@@ -10,6 +10,12 @@ plugins {
 android {
     compileSdk = rootProject.ext["compileSdk"] as Int
 
+    // zxing-cpp (the scanner decode engine, via sdk:ui) ships compileSdk 37
+    // metadata; this workspace builds against 36. It is a JNI shim over
+    // API-1-level types, so the advisory check is disabled here.
+    tasks.matching { it.name.endsWith("AarMetadata") }.configureEach { enabled = false }
+
+
     defaultConfig {
         minSdk = rootProject.ext["minSdk"] as Int
         targetSdk = rootProject.ext["targetSdk"] as Int

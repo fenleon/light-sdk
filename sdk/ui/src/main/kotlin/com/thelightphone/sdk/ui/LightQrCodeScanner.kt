@@ -1,12 +1,11 @@
 package com.thelightphone.sdk.ui
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
-import androidx.camera.mlkit.vision.MlKitAnalyzer
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
@@ -37,25 +36,38 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
+import de.markusfisch.android.zxingcpp.ZxingCpp
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
+ * The decoded symbol's exact module grid: width, height, and one byte per
+ * module (0 = black). Captured at scan time so tools can render the original
+ * symbol (e.g. an airline Aztec whose re-encode differs) instead of
+ * re-encoding the payload.
+ */
+data class LightSymbol(
+    val width: Int,
+    val height: Int,
+    val data: ByteArray,
+)
+
+/**
  * A barcode decoded by the scanner: the decoded text value, the format as a
- * lowercase name (e.g. "qr", "aztec", "pdf417", "code128"), and the raw payload
+ * lowercase name (e.g. "qr", "aztec", "pdf417", "code128"), the raw payload
  * bytes (present when the payload is binary rather than text, e.g. an Aztec
- * ticketing code).
+ * ticketing code), and the exact decoded symbol grid when the decoder
+ * captured it.
  */
 data class LightScannedBarcode(
     val value: String,
     val formatName: String,
     val rawBytes: ByteArray? = null,
+    /** The exact decoded symbol grid, when the scanner captured it. */
+    val symbol: LightSymbol? = null,
 )
 
 /**
@@ -81,16 +93,17 @@ fun LightQrCodeScanner(
         onBack = onBack,
         modifier = modifier,
         title = title,
-        formats = Barcode.FORMAT_QR_CODE,
+        formats = FORMAT_QR_CODE,
         checkCameraPermission = checkCameraPermission,
         launchCameraPermissionRequest = launchCameraPermissionRequest,
     )
 }
 
 /**
- * Full-screen barcode scanner for any [formats] ML Kit supports (QR, Aztec,
- * PDF417, Data Matrix, Code 128, EAN/UPC, ... — see [Barcode.FORMAT_ALL_FORMATS]).
- * [onScanned] receives the decoded code with its format and raw bytes.
+ * Full-screen barcode scanner for any [formats] zxing-cpp supports (QR, Aztec,
+ * PDF417, Data Matrix, Code 128, EAN/UPC, ... — the `formats` bitmask keeps
+ * the ML Kit `Barcode.FORMAT_*` values for API compatibility (see below). [onScanned] receives the
+ * decoded code with its format, raw bytes, and exact decoded symbol grid.
  *
  * Host apps must declare [Manifest.permission.CAMERA].
  *
@@ -103,7 +116,7 @@ fun LightQrCodeScanner(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     title: String = "Scan Code",
-    formats: Int = Barcode.FORMAT_ALL_FORMATS,
+    formats: Int = FORMAT_ALL_FORMATS,
     checkCameraPermission: suspend () -> Result<Boolean>,
     launchCameraPermissionRequest: suspend () -> Unit,
 ) {
@@ -209,16 +222,7 @@ private fun QrCameraPreview(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val mainExecutor = remember { ContextCompat.getMainExecutor(context) }
     val onScannedState = rememberUpdatedState(onScanned)
-
-    val barcodeScanner = remember(formats) {
-        BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(formats)
-                .build(),
-        )
-    }
 
     val cameraController = remember {
         LifecycleCameraController(context).apply {
@@ -227,43 +231,39 @@ private fun QrCameraPreview(
         }
     }
 
-    DisposableEffect(lifecycleOwner, cameraController, barcodeScanner) {
-        val analyzer = MlKitAnalyzer(
-            listOf(barcodeScanner),
-            CameraController.COORDINATE_SYSTEM_VIEW_REFERENCED,
-            mainExecutor,
-        ) { result ->
-            if (result.getThrowable(barcodeScanner) != null) {
-                return@MlKitAnalyzer
-            }
-
-            val barcodes = result.getValue(barcodeScanner) ?: return@MlKitAnalyzer
-            if (barcodes.isEmpty()) {
-                return@MlKitAnalyzer
-            }
-
-            val decoded = barcodes
-                .asSequence()
-                .mapNotNull { barcode ->
-                    val value = barcode.rawValue ?: barcode.displayValue
-                    if (value.isNullOrBlank()) {
-                        null
-                    } else {
-                        LightScannedBarcode(value, formatName(barcode.format), barcode.rawBytes)
-                    }
+    DisposableEffect(lifecycleOwner, cameraController) {
+        // Decode off the main thread: zxing-cpp runs native code per frame and
+        // the analyzer is invoked sequentially at up to 30 fps.
+        val analyzerExecutor = Executors.newSingleThreadExecutor()
+        val readerOptions = zxingReaderOptions(formats)
+        val analyzer = ImageAnalysis.Analyzer { image ->
+            try {
+                val decoded = runCatching {
+                    val yPlane = image.planes[0]
+                    ZxingCpp.readYBuffer(
+                        yPlane.buffer,
+                        yPlane.rowStride,
+                        image.cropRect,
+                        image.imageInfo.rotationDegrees,
+                        readerOptions,
+                    )
+                }.getOrNull()
+                    ?.asSequence()
+                    ?.mapNotNull { it.toLightBarcode() }
+                    ?.firstOrNull()
+                if (decoded != null) {
+                    onScannedState.value(decoded)
                 }
-                .firstOrNull()
-
-            if (decoded != null) {
-                onScannedState.value(decoded)
+            } finally {
+                image.close()
             }
         }
-        cameraController.setImageAnalysisAnalyzer(mainExecutor, analyzer)
+        cameraController.setImageAnalysisAnalyzer(analyzerExecutor, analyzer)
 
         onDispose {
             cameraController.clearImageAnalysisAnalyzer()
             cameraController.unbind()
-            barcodeScanner.close()
+            analyzerExecutor.shutdown()
         }
     }
 
@@ -339,20 +339,76 @@ private enum class LightQrUiState {
     Loading, PermissionError, PermissionDenied, Active
 }
 
-/** ML Kit format constant → lowercase name (matches the Passes format vocabulary). */
-private fun formatName(format: Int): String = when (format) {
-    Barcode.FORMAT_AZTEC -> "aztec"
-    Barcode.FORMAT_PDF417 -> "pdf417"
-    Barcode.FORMAT_DATA_MATRIX -> "datamatrix"
-    Barcode.FORMAT_QR_CODE -> "qr"
-    Barcode.FORMAT_CODE_128 -> "code128"
-    Barcode.FORMAT_CODE_39 -> "code39"
-    Barcode.FORMAT_CODE_93 -> "code93"
-    Barcode.FORMAT_CODABAR -> "codabar"
-    Barcode.FORMAT_EAN_13 -> "ean13"
-    Barcode.FORMAT_EAN_8 -> "ean8"
-    Barcode.FORMAT_UPC_A -> "upc_a"
-    Barcode.FORMAT_UPC_E -> "upc_e"
-    Barcode.FORMAT_ITF -> "itf14"
-    else -> "qr"
+// ML Kit's Barcode.FORMAT_* bitmask values. The scanner used to decode with ML
+// Kit; the SDK dropped that dependency, the public `formats` API did not — the
+// default 0 = all formats, each bit selects a family (kept stable on purpose).
+private const val FORMAT_ALL_FORMATS = 0
+private const val FORMAT_CODE_128 = 1
+private const val FORMAT_CODE_39 = 2
+private const val FORMAT_CODE_93 = 4
+private const val FORMAT_CODABAR = 8
+private const val FORMAT_DATA_MATRIX = 16
+private const val FORMAT_EAN_13 = 32
+private const val FORMAT_EAN_8 = 64
+private const val FORMAT_ITF = 128
+private const val FORMAT_QR_CODE = 256
+private const val FORMAT_UPC_A = 512
+private const val FORMAT_UPC_E = 1024
+private const val FORMAT_PDF417 = 2048
+private const val FORMAT_AZTEC = 4096
+
+/** ML Kit format bitmask (kept for API compatibility) → zxing-cpp formats. */
+private fun zxingReaderOptions(formats: Int): ZxingCpp.ReaderOptions =
+    ZxingCpp.ReaderOptions().apply {
+        // An empty set decodes all formats; only restrict when the caller
+        // asked for a specific ML Kit bitmask (FORMAT_ALL_FORMATS = 0).
+        this.formats = zxingFormats(formats)
+    }
+
+private fun zxingFormats(formats: Int): Set<ZxingCpp.BarcodeFormat> {
+    if (formats <= 0) return emptySet() // FORMAT_ALL_FORMATS / FORMAT_UNKNOWN → all
+    val result = mutableSetOf<ZxingCpp.BarcodeFormat>()
+    if (formats and FORMAT_AZTEC != 0) result += ZxingCpp.BarcodeFormat.Aztec
+    if (formats and FORMAT_PDF417 != 0) result += ZxingCpp.BarcodeFormat.PDF417
+    if (formats and FORMAT_DATA_MATRIX != 0) result += ZxingCpp.BarcodeFormat.DataMatrix
+    if (formats and FORMAT_QR_CODE != 0) result += ZxingCpp.BarcodeFormat.QRCode
+    if (formats and FORMAT_CODE_128 != 0) result += ZxingCpp.BarcodeFormat.Code128
+    if (formats and FORMAT_CODE_39 != 0) result += ZxingCpp.BarcodeFormat.Code39
+    if (formats and FORMAT_CODE_93 != 0) result += ZxingCpp.BarcodeFormat.Code93
+    if (formats and FORMAT_CODABAR != 0) result += ZxingCpp.BarcodeFormat.Codabar
+    if (formats and FORMAT_EAN_13 != 0) result += ZxingCpp.BarcodeFormat.EAN13
+    if (formats and FORMAT_EAN_8 != 0) result += ZxingCpp.BarcodeFormat.EAN8
+    if (formats and FORMAT_UPC_A != 0) result += ZxingCpp.BarcodeFormat.UPCA
+    if (formats and FORMAT_UPC_E != 0) result += ZxingCpp.BarcodeFormat.UPCE
+    if (formats and FORMAT_ITF != 0) result += ZxingCpp.BarcodeFormat.ITF
+    return result
+}
+
+/** zxing-cpp decode result → [LightScannedBarcode], keeping the exact symbol. */
+private fun ZxingCpp.Result.toLightBarcode(): LightScannedBarcode? {
+    val value = text.takeIf { it.isNotBlank() } ?: return null
+    return LightScannedBarcode(
+        value = value,
+        formatName = format.toFormatName(),
+        rawBytes = rawBytes,
+        symbol = symbol?.let { LightSymbol(it.width, it.height, it.data) },
+    )
+}
+
+/** zxing-cpp format → lowercase name (matches the Passes format vocabulary). */
+private fun ZxingCpp.BarcodeFormat.toFormatName(): String = when (this) {
+    ZxingCpp.BarcodeFormat.Aztec -> "aztec"
+    ZxingCpp.BarcodeFormat.PDF417 -> "pdf417"
+    ZxingCpp.BarcodeFormat.DataMatrix -> "datamatrix"
+    ZxingCpp.BarcodeFormat.QRCode -> "qr"
+    ZxingCpp.BarcodeFormat.Code128 -> "code128"
+    ZxingCpp.BarcodeFormat.Code39 -> "code39"
+    ZxingCpp.BarcodeFormat.Code93 -> "code93"
+    ZxingCpp.BarcodeFormat.Codabar -> "codabar"
+    ZxingCpp.BarcodeFormat.EAN13 -> "ean13"
+    ZxingCpp.BarcodeFormat.EAN8 -> "ean8"
+    ZxingCpp.BarcodeFormat.UPCA -> "upc_a"
+    ZxingCpp.BarcodeFormat.UPCE -> "upc_e"
+    ZxingCpp.BarcodeFormat.ITF -> "itf14"
+    else -> name.lowercase()
 }
