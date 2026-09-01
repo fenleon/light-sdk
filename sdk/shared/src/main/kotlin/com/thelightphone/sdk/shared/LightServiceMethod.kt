@@ -583,10 +583,32 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * [SetRoomMuted].
              */
             val muted: Boolean = false,
+            /**
+             * The user archived this room on Beeper: hidden from the main room list,
+             * silent, reachable only via search VIEW ALL.
+             */
+            val archived: Boolean = false,
+            /**
+             * The user pinned this room (m.favourite tag): sorted to the top of the
+             * room list; its row shows no latest timestamp.
+             */
+            val pinned: Boolean = false,
         )
 
         @Serializable
         data class Response(val rooms: List<Room>)
+    }
+
+    /**
+     * The full room census — every room the resolver knows, trimmed rows (no
+     * preview/unread/last event) so the whole account crosses one binder
+     * transaction. The contacts list + search need to find ANY room, not just
+     * the newest window [GetRooms] serves (chats 2026-08-30).
+     */
+    object GetAllRooms : LightServiceMethod<Unit, GetRooms.Response> {
+        override val id = "GetAllRooms"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<GetRooms.Response>()
     }
 
     /**
@@ -651,6 +673,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * tool renders it under the thumbnail.
              */
             val caption: String? = null,
+            /**
+             * Whether an m.replace edit updated this message (chats): the
+             * companion serves the EDITED body in [body] and this flag makes
+             * the tool render an "edited" tag under the row.
+             */
+            val edited: Boolean = false,
         )
 
         @Serializable
@@ -753,6 +781,47 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Request(val roomId: String, val muted: Boolean)
     }
 
+    /** Pins or unpins a room (m.favourite tag, synced, chats 2026-08-28). */
+    object SetRoomPinned : LightServiceMethod<SetRoomPinned.Request, Unit> {
+        override val id = "SetRoomPinned"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val pinned: Boolean)
+    }
+
+    /**
+     * Snapshot of a room's pinned/muted/archived flags (chats, 2026-08-28):
+     * the contact panel polls this while open so Beeper-side changes reach it
+     * live (the flags live in the companion's synced cache).
+     */
+    object GetRoomFlags : LightServiceMethod<GetRoomFlags.Request, GetRoomFlags.Response> {
+        override val id = "GetRoomFlags"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String)
+
+        @Serializable
+        data class Response(
+            val pinned: Boolean = false,
+            val muted: Boolean = false,
+            val archived: Boolean = false,
+        )
+    }
+
+    /** Archives or unarchives a room (Beeper auto_archive account data, synced, chats 2026-08-28). */
+    object SetRoomArchived : LightServiceMethod<SetRoomArchived.Request, Unit> {
+        override val id = "SetRoomArchived"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val archived: Boolean)
+    }
+
     /** Companion connection state, for the tool's Settings/status display. */
     object GetConnectionState : LightServiceMethod<Unit, GetConnectionState.Response> {
         override val id = "GetConnectionState"
@@ -770,6 +839,14 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val roomsResolved: Int = 0,
             /** Whether the companion's sync loop is running (Settings → Sync toggle). */
             val syncEnabled: Boolean = true,
+            /** Background key-backup restore crawl in progress (Account screen's
+             *  "Recovering… x of y rooms" line, 2026-08-29). */
+            val restoreScanning: Boolean = false,
+            val restoreScanned: Int = 0,
+            val restoreRoomsTotal: Int = 0,
+            /** True when the crawl ran to completion; the Account screen pairs it
+             *  with [syncEnabled] to show "All messages restored". */
+            val restoreCompleted: Boolean = false,
         )
     }
 
@@ -1000,6 +1077,41 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Response(val ok: Boolean)
     }
 
+    /**
+     * Monotonic revision of the served room list (chats, 2026-09-01): bumped
+     * server-side every time the published list content changes. The tool's
+     * periodic list refresh asks for this cheap number first and only fetches
+     * the full [GetRooms] payload when it moved — idle polls stop crossing the
+     * binder with the 400-room cap.
+     */
+    object GetRoomListRevision : LightServiceMethod<Unit, GetRoomListRevision.Response> {
+        override val id = "GetRoomListRevision"
+        override val requestSerializer = serializer<Unit>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Response(val revision: Long)
+    }
+
+    /**
+     * Monotonic revision of a room's cached newest page (chats, 2026-09-01):
+     * bumped whenever the page cache's content changes (new/edited events,
+     * read-receipt patches, pending-echo state). The thread's 3s poll asks for
+     * this first and skips the [GetMessages] round trip while the page is
+     * unchanged.
+     */
+    object GetMessagePageRevision : LightServiceMethod<GetMessagePageRevision.Request, GetMessagePageRevision.Response> {
+        override val id = "GetMessagePageRevision"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String)
+
+        @Serializable
+        data class Response(val revision: Long)
+    }
+
     // --- Passkey methods (local, additive addition for the Passkey companion;
     // upstreamable — production com.lightos should implement these for a real LP3).
     /**
@@ -1132,12 +1244,16 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetAccountState,
     LightServiceMethod.Logout,
     LightServiceMethod.GetRooms,
+    LightServiceMethod.GetAllRooms,
     LightServiceMethod.GetMessages,
     LightServiceMethod.SendMessage,
     LightServiceMethod.RetrySend,
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,
     LightServiceMethod.SetRoomMuted,
+    LightServiceMethod.SetRoomPinned,
+    LightServiceMethod.GetRoomFlags,
+    LightServiceMethod.SetRoomArchived,
     LightServiceMethod.GetConnectionState,
     LightServiceMethod.GetE2eeState,
     LightServiceMethod.StartDeviceVerification,
@@ -1151,6 +1267,9 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.PlayVoiceNote,
     LightServiceMethod.StartVoiceNoteSend,
     LightServiceMethod.SetSyncEnabled,
+    LightServiceMethod.GetRoomListRevision,
+    LightServiceMethod.GetMessagePageRevision,
+    LightServiceMethod.GetMollySocketUri,
     LightServiceMethod.StartPasskeySession,
     LightServiceMethod.StopSession,
     LightServiceMethod.GetSessionState,
