@@ -578,6 +578,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              */
             val network: String? = null,
             /**
+             * For rooms inside a bridged community (Beeper sub-spaces under an
+             * account space — WhatsApp community groups): the community's own
+             * name ("1 euro film"). Null otherwise. Groups carry the community
+             * where 1:1s carry [contactId] (chats, feedback 2026-09-01).
+             */
+            val community: String? = null,
+            /**
              * The user muted this room in the tool (chats): its messages stop
              * notifying; the unread badge and room list stay. Set via
              * [SetRoomMuted].

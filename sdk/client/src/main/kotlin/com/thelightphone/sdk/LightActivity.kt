@@ -286,6 +286,20 @@ class SealedLightContext(internal val androidContext: Context) {
     val filesDir: File by lazy{ androidContext.filesDir }
     val fileShare: LightFileShare by lazy { LightFileShare(androidContext) }
     val connectivity: LightConnectivity by lazy { LightConnectivity(androidContext) }
+
+    /**
+     * Whether the framework location master switch is on (Location tool,
+     * 2026-08-28). A plain getter (not cached) so tools can re-read it on
+     * screen resume — the SDK plugin forbids getSystemService in tool code, so
+     * the wrap lives here, like [connectivity]. No permission needed to read
+     * the switch; [android.location.LocationManager.isLocationEnabled] is
+     * permission-free.
+     */
+    val locationEnabled: Boolean
+        get() = androidContext
+            .getSystemService(android.location.LocationManager::class.java)
+            .isLocationEnabled()
+
     fun readAsset(path: String): ByteArray = androidContext.assets.open(path).use { it.readBytes() }
 }
 /**

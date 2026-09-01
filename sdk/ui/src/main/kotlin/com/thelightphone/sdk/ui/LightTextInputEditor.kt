@@ -71,6 +71,15 @@ fun LightTextInputEditor(
     bottomAligned: Boolean = false,
     centered: Boolean = false,
     submitOnReturn: Boolean? = null,
+    submitBottomRight: Boolean = false,
+    // An extra action in the bottom bar's LEFT slot (icon or text) — the
+    // two-action editor grammar (LightOS calendar-form style): a leading
+    // "details" action beside the centered submit (feedback 2026-08-26).
+    bottomBarLeadingButton: LightBarButton? = null,
+    // An extra action in the bottom bar's CENTER slot — used with
+    // [submitBottomRight] to render left · center · right (Tasks' notes
+    // CLEAR / X / SAVE, feedback 2026-08-26).
+    bottomBarCenterButton: LightBarButton? = null,
 ) {
     val currentOnSubmit by rememberUpdatedState(onSubmit)
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -111,6 +120,9 @@ fun LightTextInputEditor(
         bottomAligned,
         centered,
         submitOnReturn,
+        submitBottomRight,
+        bottomBarLeadingButton,
+        bottomBarCenterButton,
     )
 }
 
@@ -145,6 +157,9 @@ fun LightTextInputEditor(
     bottomAligned: Boolean = false,
     centered: Boolean = false,
     submitOnReturn: Boolean? = null,
+    submitBottomRight: Boolean = false,
+    bottomBarLeadingButton: LightBarButton? = null,
+    bottomBarCenterButton: LightBarButton? = null,
 ) {
     val colors = LightThemeTokens.colors
     val inputStyle = inputTextStyle ?: if (bottomAligned) {
@@ -314,27 +329,52 @@ fun LightTextInputEditor(
                     viewModel = viewModel,
                     additionalBottomHeight = 5f.gridUnitsAsDp(),
                     bottomBar = {
+                        // The action sits in a bottom bar below the keys; by
+                        // default centered, [submitBottomRight] moves it to the
+                        // right slot (the calendar-form corner-actions grammar —
+                        // Passes' field editors, feedback 2026-08-24), and
+                        // [bottomBarLeadingButton] adds a left-slot action.
                         LightBottomBar(
                             topPadding = 0.dp,
-                            items = listOf(
-                                when (submitIcon) {
-                                    null -> LightBarButton.Text(
-                                        text = submitLabel,
-                                        onClick = { onSubmit(state.text) },
-                                    )
-                                    else -> LightBarButton.LightIcon(
-                                        icon = submitIcon,
-                                        onClick = { onSubmit(state.text) },
-                                        contentDescription = submitLabel,
-                                    )
-                                },
-                            ),
+                            items = when {
+                                submitBottomRight -> listOf(
+                                    bottomBarLeadingButton,
+                                    bottomBarCenterButton,
+                                    submitBarButton(state, submitLabel, submitIcon, onSubmit),
+                                )
+                                bottomBarLeadingButton != null -> listOf(
+                                    bottomBarLeadingButton,
+                                    submitBarButton(state, submitLabel, submitIcon, onSubmit),
+                                )
+                                else -> listOf(
+                                    submitBarButton(state, submitLabel, submitIcon, onSubmit),
+                                )
+                            },
                         )
                     }
                 )
             }
         }
     }
+}
+
+/** The submit action rendered inside the editor's bottom bar (centered, or
+ *  bottom-right via LightTextInputEditor's [LightTextInputEditor.submitBottomRight]). */
+private fun submitBarButton(
+    state: TextFieldState,
+    submitLabel: String,
+    submitIcon: LightIconConfiguration?,
+    onSubmit: (CharSequence) -> Unit,
+) = when (submitIcon) {
+    null -> LightBarButton.Text(
+        text = submitLabel,
+        onClick = { onSubmit(state.text) },
+    )
+    else -> LightBarButton.LightIcon(
+        icon = submitIcon,
+        onClick = { onSubmit(state.text) },
+        contentDescription = submitLabel,
+    )
 }
 
 private fun factory(

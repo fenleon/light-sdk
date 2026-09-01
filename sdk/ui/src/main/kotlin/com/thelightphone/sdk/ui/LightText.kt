@@ -146,9 +146,10 @@ fun LightText(
     )
 }
 
-// 4 dp ≈ the LP3's selected-row underline thickness (measured 10 px at
-// 420 dpi on the Ringer Mode and USB panels, 2026-08-22).
-private const val UNDERLINE_THICKNESS_DP = 4
+// 3 dp — the selected-row underline, slightly finer than the native 4 dp
+// measured on the LP3's Ringer Mode / USB panels (2026-08-22; feedback
+// 2026-08-27: the Networks panel underline read "slightly too thick").
+private const val UNDERLINE_THICKNESS_DP = 3
 // Air between the text baseline and the underline's top: 0.24 em ≈ the LP3's
 // ~24 px gap (measured under "Media transfer", USB panel, and "On", Ringer
 // Mode — the ink ends ~24 px above the bar, 2026-08-22). The 0.12 em (12 px)

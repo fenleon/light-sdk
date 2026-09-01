@@ -66,6 +66,9 @@ internal fun LightBarButtonView(
     iconSizeUnits: Float = LightBarButtonDefaults.ICON_SIZE_UNITS,
     textVariant: LightTextVariant,
     useSpacerWhenNull: Boolean,
+    // Top-bar left icons are flush-left so the chevron's apex matches the
+    // native LightOS back arrow; bottom-bar items stay centered (default).
+    iconAlignment: Alignment = Alignment.Center,
 ) {
     if (button == null) {
         if (useSpacerWhenNull) {
@@ -108,7 +111,7 @@ internal fun LightBarButtonView(
                 modifier = baseModifier.widthIn(
                     min = maxOf(button.sizeUnits, MIN_BAR_BUTTON_TOUCH_WIDTH_UNITS).gridUnitsAsDp(),
                 ),
-                contentAlignment = Alignment.Center,
+                contentAlignment = iconAlignment,
             ) {
                 Image(
                     painter = button.painter,
@@ -124,7 +127,7 @@ internal fun LightBarButtonView(
                 modifier = baseModifier.widthIn(
                     min = maxOf(button.sizeUnits, MIN_BAR_BUTTON_TOUCH_WIDTH_UNITS).gridUnitsAsDp(),
                 ),
-                contentAlignment = Alignment.Center,
+                contentAlignment = iconAlignment,
             ) {
                 LightIcon(
                     icon = button.icon,

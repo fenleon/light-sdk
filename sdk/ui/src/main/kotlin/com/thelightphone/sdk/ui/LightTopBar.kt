@@ -15,10 +15,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.zIndex
 
 private const val TOPBAR_HEIGHT_UNITS = 3f
+// 1-unit side padding + left-aligned icons puts the back arrow's apex at
+// ~x48 on the LP3, matching the native LightOS settings top bar (between the
+// screen edge and the 80px settings-row text margin), 2026-08-28.
 private const val HORIZONTAL_PADDING_UNITS = 1f
 private const val CENTER_MAX_WIDTH_UNITS = 18f
 
-private val TOPBAR_BUTTON_TEXT_VARIANT = LightTextVariant.Fine
 private val TOPBAR_CENTER_TEXT_VARIANT = LightTextVariant.Fine
 
 sealed interface LightTopBarCenter {
@@ -27,6 +29,9 @@ sealed interface LightTopBarCenter {
     data class Text(
         val text: String,
         override val onClick: (() -> Unit)? = null,
+        // Draws the LightText selection underline under the title (e.g. the
+        // date picker's current-month title — the "selected month").
+        val underline: Boolean = false,
     ) : LightTopBarCenter
 
     data class TwoLineDetail(
@@ -42,6 +47,10 @@ fun LightTopBar(
     center: LightTopBarCenter? = null,
     rightButton: LightTopBarButton? = null,
     modifier: Modifier = Modifier,
+    // The bar's default button type is small (Fine); pass a different variant
+    // to match a bottom-bar action's size (e.g. Button — Passes' details EDIT,
+    // feedback 2026-08-24).
+    textVariant: LightTextVariant = LightTextVariant.Fine,
 ) {
     val barHeight = TOPBAR_HEIGHT_UNITS.gridUnitsAsDp()
     val horizontalPadding = HORIZONTAL_PADDING_UNITS.gridUnitsAsDp()
@@ -66,8 +75,13 @@ fun LightTopBar(
                 LightBarButtonView(
                     button = leftButton,
                     heightUnits = TOPBAR_HEIGHT_UNITS,
-                    textVariant = TOPBAR_BUTTON_TEXT_VARIANT,
+                    textVariant = textVariant,
                     useSpacerWhenNull = true,
+                    // Native LightOS settings back arrows are left-aligned in
+                    // their touch target, not centered (LP3: glyph apex ~x48
+                    // — between the edge and the 80px text margin); center
+                    // alignment drifts the icon toward the middle of the box.
+                    iconAlignment = Alignment.CenterStart,
                 )
             }
 
@@ -80,7 +94,7 @@ fun LightTopBar(
                 LightBarButtonView(
                     button = rightButton,
                     heightUnits = TOPBAR_HEIGHT_UNITS,
-                    textVariant = TOPBAR_BUTTON_TEXT_VARIANT,
+                    textVariant = textVariant,
                     useSpacerWhenNull = true,
                 )
             }
@@ -113,6 +127,7 @@ private fun LightTopBarCenterView(center: LightTopBarCenter?) {
                 align = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                underline = center.underline,
                 modifier = modifier,
             )
         }

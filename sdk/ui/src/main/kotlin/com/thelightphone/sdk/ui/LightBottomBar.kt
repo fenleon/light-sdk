@@ -17,7 +17,10 @@ import androidx.compose.ui.unit.Dp
 
 private const val BOTTOMBAR_HEIGHT_UNITS = 4f
 private const val HORIZONTAL_PADDING_MULTI_UNITS = 2f
-private const val TOP_MARGIN_UNITS = 1f
+// LP3-verified (2026-09-01, phone tool): the native bottom bar is 4 grid
+// units tall, flush with the content above (last row ends exactly at the
+// bar's top edge) and flush with the screen bottom. No top margin.
+private const val TOP_MARGIN_UNITS = 0f
 
 private val BOTTOMBAR_TEXT_VARIANT = LightTextVariant.Button
 
