@@ -285,6 +285,8 @@ class LightSdkService : Service() {
             LightServiceMethod.SendMessage,
             LightServiceMethod.SendReaction,
             LightServiceMethod.UnsendReaction,
+            LightServiceMethod.EditMessage,
+            LightServiceMethod.UnsendMessage,
             LightServiceMethod.RetrySend,
             LightServiceMethod.MarkRead,
             LightServiceMethod.SetTyping,

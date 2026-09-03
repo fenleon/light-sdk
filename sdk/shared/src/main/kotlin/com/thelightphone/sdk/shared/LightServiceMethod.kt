@@ -650,7 +650,9 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              */
             val sendStatus: String? = null,
             /**
-             * How the tool renders the row: "text" | "image". Images carry
+             * How the tool renders the row: "text" | "image" (Chats has since
+             * added "audio", "notice", and — Phase C, 2026-09-03 —
+             * "redacted", the "Message unsent" tombstone). Images carry
              * their bytes over [GetMessageMedia] (keyed by room + event id).
              */
             val contentType: String = "text",
@@ -693,6 +695,20 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * above the row's content.
              */
             val forwarded: Boolean = false,
+            /**
+             * Whether EDIT is offered on this own row (chats Phase C,
+             * 2026-09-03): the bridge's `com.beeper.room_features` edit
+             * capability (support level ≥ 1) AND inside its `edit_max_age`
+             * window when one is set AND the row is text (the tool's edit is
+             * text-only). False hides the action; the default keeps native
+             * Matrix rooms and caps-less bridges ungated.
+             */
+            val canEdit: Boolean = true,
+            /**
+             * Whether UNSEND is offered on this own row (same gate as
+             * [canEdit], the bridge's delete capability / `delete_max_age`).
+             */
+            val canUnsend: Boolean = true,
         )
 
         @Serializable
@@ -799,6 +815,34 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
 
         @Serializable
         data class Request(val roomId: String, val eventId: String, val key: String)
+    }
+
+    /**
+     * Edits the signed-in user's text message [Request.eventId] to
+     * [Request.newBody] — an m.replace edit event (chats, 2026-09-03). The
+     * companion serves the edited body back through [GetMessages.Message].
+     */
+    object EditMessage : LightServiceMethod<EditMessage.Request, Unit> {
+        override val id = "EditMessage"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String, val newBody: String)
+    }
+
+    /**
+     * Unsends the signed-in user's message [Request.eventId] — a plain Matrix
+     * redaction, so the message is removed for everyone the bridge can reach
+     * (chats, 2026-09-03). The row renders as a "redacted" tombstone after.
+     */
+    object UnsendMessage : LightServiceMethod<UnsendMessage.Request, Unit> {
+        override val id = "UnsendMessage"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String)
     }
 
     object SetTyping : LightServiceMethod<SetTyping.Request, Unit> {
@@ -1307,6 +1351,8 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.SendMessage,
     LightServiceMethod.SendReaction,
     LightServiceMethod.UnsendReaction,
+    LightServiceMethod.EditMessage,
+    LightServiceMethod.UnsendMessage,
     LightServiceMethod.RetrySend,
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,

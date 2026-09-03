@@ -10,6 +10,11 @@ android {
     namespace = "com.thelightphone.sdk.emulator"
     compileSdk = rootProject.ext["compileSdk"] as Int
 
+    // zxing-cpp (via sdk:ui) ships compileSdk 37 metadata; this workspace
+    // builds against 36. It is a JNI shim over API-1-level types, so the
+    // advisory check is disabled here (tool/examples pattern).
+    tasks.matching { it.name.endsWith("AarMetadata") }.configureEach { enabled = false }
+
     val platformKeystore = file("keys/platform.jks")
     val hasPlatformKey = platformKeystore.exists()
 

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.Signature
+import android.net.Uri
 import android.util.Log
 import com.thelightphone.sdk.emulator.http.EmulatorHttpServer
 import com.thelightphone.sdk.server.ClientCertType
@@ -50,6 +51,9 @@ class EmulatorApplication : Application() {
             provideSdkSettings = { settings }
             permissionActivity = LightSdkPermissionActivity::class.java
             onDeviceKeyEvent = { _, request -> handleDeviceKeyEvent(request) }
+            // Contact panel CALL (chats, 2026-09-01): the AOSP dialer opens
+            // prefilled — real LightOS does this in its own server.
+            onOpenDialer = { _, phoneNumber -> handleOpenDialer(phoneNumber) }
         }
 
         EmulatorHttpServer(this).start()
@@ -80,6 +84,13 @@ class EmulatorApplication : Application() {
             LightModalManager.show(keyModal)
             foregroundEmulator()
         }
+    }
+
+    private fun handleOpenDialer(phoneNumber: String) {
+        startActivity(
+            Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneNumber"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     private fun foregroundEmulator() {
