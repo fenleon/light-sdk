@@ -686,6 +686,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * the tool render an "edited" tag under the row.
              */
             val edited: Boolean = false,
+            /**
+             * Whether the bridge flagged this message as forwarded (chats): the
+             * WhatsApp forward header ("↷ Forwarded") is lifted out of [body] /
+             * [caption], and this flag makes the tool render a small header
+             * above the row's content.
+             */
+            val forwarded: Boolean = false,
         )
 
         @Serializable
@@ -767,6 +774,31 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
 
         @Serializable
         data class Request(val roomId: String, val transactionId: String)
+    }
+
+    /**
+     * Sends a reaction (an m.reaction annotation) with [Request.key] (an
+     * emoji) on [Request.eventId] (chats, 2026-09-03). Unsending is
+     * [UnsendReaction].
+     */
+    object SendReaction : LightServiceMethod<SendReaction.Request, Unit> {
+        override val id = "SendReaction"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String, val key: String)
+    }
+
+    /** Redacts the signed-in user's [SendReaction] with [Request.key] on
+     *  [Request.eventId] (chats, 2026-09-03). */
+    object UnsendReaction : LightServiceMethod<UnsendReaction.Request, Unit> {
+        override val id = "UnsendReaction"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Unit>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String, val key: String)
     }
 
     object SetTyping : LightServiceMethod<SetTyping.Request, Unit> {
@@ -1024,6 +1056,25 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
     }
 
     /**
+     * Saves an image message to the device's Pictures/Chats album (Chats
+     * photo viewer save button, 2026-09-03). The companion re-fetches the
+     * original bytes (media cache hit after a view) and inserts them into
+     * the media store — app-contributed media needs no storage permission
+     * on API 29+.
+     */
+    object SaveMessageImage : LightServiceMethod<SaveMessageImage.Request, SaveMessageImage.Response> {
+        override val id = "SaveMessageImage"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(val roomId: String, val eventId: String)
+
+        @Serializable
+        data class Response(val ok: Boolean = true)
+    }
+
+    /**
      * Toggles playback of a voice-note (m.audio) message in the companion:
      * plays [Request.eventId] (stopping any other playback), or stops it if it
      * is already the one playing. The companion downloads the audio
@@ -1254,6 +1305,8 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.GetAllRooms,
     LightServiceMethod.GetMessages,
     LightServiceMethod.SendMessage,
+    LightServiceMethod.SendReaction,
+    LightServiceMethod.UnsendReaction,
     LightServiceMethod.RetrySend,
     LightServiceMethod.MarkRead,
     LightServiceMethod.SetTyping,
@@ -1271,6 +1324,7 @@ val allMethods: Map<String, LightServiceMethod<*, *>> = listOf(
     LightServiceMethod.TakeNotifyRoom,
     LightServiceMethod.StartPhotoSend,
     LightServiceMethod.GetMessageMedia,
+    LightServiceMethod.SaveMessageImage,
     LightServiceMethod.PlayVoiceNote,
     LightServiceMethod.StartVoiceNoteSend,
     LightServiceMethod.SetSyncEnabled,
