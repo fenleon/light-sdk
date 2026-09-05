@@ -310,6 +310,7 @@ class LightSdkService : Service() {
             LightServiceMethod.SetSyncEnabled,
             LightServiceMethod.GetRoomListRevision,
             LightServiceMethod.GetMessagePageRevision,
+            LightServiceMethod.WaitForChange,
             // Passkey methods are additive (Passkey companion); the wrapping
             // server app handles them via customServiceMethodResolver.
             LightServiceMethod.StartPasskeySession,

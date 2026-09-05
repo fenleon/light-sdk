@@ -1218,6 +1218,35 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Response(val revision: Long)
     }
 
+    /**
+     * Long-poll wait for a change (chats, 2026-09-06): holds the binder call
+     * until the watched revision moves past [Request.lastSeen] or
+     * [Request.timeoutMs] elapses, then returns the current revision either
+     * way. Replaces the tool screens' fixed-delay poll ticks (list 2 s /
+     * thread 1.5 s) — an idle screen costs one held call per timeout window
+     * instead of a wakeup every tick, and a change lands within milliseconds
+     * instead of at the next tick. watch = "rooms" (the [GetRoomListRevision]
+     * counter, roomId ignored) or "page" (the [GetMessagePageRevision] counter
+     * for [Request.roomId]). Same model as [WaitForVolumeChange]; safe because
+     * each sync binder call runs on its own pool thread.
+     */
+    object WaitForChange : LightServiceMethod<WaitForChange.Request, WaitForChange.Response> {
+        override val id = "WaitForChange"
+        override val requestSerializer = serializer<Request>()
+        override val responseSerializer = serializer<Response>()
+
+        @Serializable
+        data class Request(
+            val watch: String,
+            val roomId: String? = null,
+            val lastSeen: Long,
+            val timeoutMs: Long,
+        )
+
+        @Serializable
+        data class Response(val revision: Long)
+    }
+
     // --- Passkey methods (local, additive addition for the Passkey companion;
     // upstreamable — production com.lightos should implement these for a real LP3).
     /**
