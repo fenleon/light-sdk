@@ -475,6 +475,7 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Response(
             val userId: String,
             val deviceId: String,
+            val needsVerification: Boolean = false,
         )
     }
 
@@ -514,6 +515,7 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
         data class Response(
             val userId: String,
             val deviceId: String,
+            val needsVerification: Boolean = false,
         )
     }
 
@@ -982,6 +984,8 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             val state: String,
             /** The SAS emoji set to compare, when [state] == "compare". */
             val emoji: List<String>? = null,
+            /** The device that accepted the verification request, when known. */
+            val deviceId: String? = null,
             val detail: String? = null,
         )
     }
