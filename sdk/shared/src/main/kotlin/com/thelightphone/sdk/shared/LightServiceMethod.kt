@@ -711,6 +711,14 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * [canEdit], the bridge's delete capability / `delete_max_age`).
              */
             val canUnsend: Boolean = true,
+            /**
+             * HTML subset (chats markdown) for the tool's rich rendering of an
+             * incoming formatted message: the server puts the m.text event's
+             * `formatted_body` here only when `format` is
+             * `org.matrix.custom.html` (and any `mx-reply` block is already
+             * stripped). Null for plain messages — render [body].
+             */
+            val formattedHtml: String? = null,
         )
 
         @Serializable
