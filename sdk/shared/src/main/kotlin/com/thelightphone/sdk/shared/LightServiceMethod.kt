@@ -719,6 +719,16 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * stripped). Null for plain messages — render [body].
              */
             val formattedHtml: String? = null,
+            /**
+             * Reply-to context (chats): event id of the message this one
+             * replies to, plus the resolved display name and one-line excerpt
+             * of that original message (null when not a reply or when the
+             * original couldn't be resolved — render the excerpt header only
+             * when [replyToId] is set).
+             */
+            val replyToId: String? = null,
+            val replyToSender: String? = null,
+            val replyToExcerpt: String? = null,
         )
 
         @Serializable
