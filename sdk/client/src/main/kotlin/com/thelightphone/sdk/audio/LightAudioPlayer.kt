@@ -139,8 +139,13 @@ class LightAudioPlayer constructor(
     }
 
     private fun connectDetachedPlayer(context: Context, usage: LightAudioUsage) {
-        val token = SessionToken(context, ComponentName(context, LightAudioService::class.java))
-        val future = MediaController.Builder(context, token)
+        // Bind with the application context: the controller's registration must
+        // outlive the screen that created it (media3 unbinds ~30 s after
+        // release; unbinding a context destroyed in that window crashes with
+        // "Service not registered" and kills the process).
+        val appContext = context.applicationContext
+        val token = SessionToken(appContext, ComponentName(appContext, LightAudioService::class.java))
+        val future = MediaController.Builder(appContext, token)
             .setConnectionHints(detachedConnectionHints(usage))
             .buildAsync()
         cancelPendingConnection = { future.cancel(false) }
