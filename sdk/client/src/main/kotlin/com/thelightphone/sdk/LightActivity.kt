@@ -88,15 +88,14 @@ class LightActivity internal constructor() : ComponentActivity() {
 
     internal fun goBack() {
         val current = currentScreen.value ?: return
+        // LightOS never exits a tool via back (the tool button leaves a tool):
+        // a back at the initial screen is a no-op, not a finish.
+        if (backStack.size <= 1) return
         val popped = current.screen
         popped.notifyWillHide()
         popped.destroy()
         current.viewModelStoreOwner.viewModelStore.clear()
         backStack.removeAt(backStack.lastIndex)
-        if (backStack.isEmpty()) {
-            finish()
-            return
-        }
         val previous = backStack.last()
         previous.screen.notifyWillShow()
         currentScreen.value = previous
