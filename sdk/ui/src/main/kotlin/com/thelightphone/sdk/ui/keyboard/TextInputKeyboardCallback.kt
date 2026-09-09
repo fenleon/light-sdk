@@ -39,6 +39,10 @@ internal class TextInputKeyboardCallback(
                 deleteBeforeCursor(surrogateAwareDeleteCount(before, 1))
             }
             SpecialKey.Return -> if (submitOnReturn ?: singleLine) onReturn() else insertAtCursor("\n")
+            // The keyboard's down-chevron close button is a Compose Button, not
+            // a key — it reaches the callback only on release (no press event),
+            // so without this it clicks silently (LP3 feedback 2026-09-09).
+            SpecialKey.Close -> onHaptic()
             else -> Unit
         }
     }
