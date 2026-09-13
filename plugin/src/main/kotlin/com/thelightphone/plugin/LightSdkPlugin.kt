@@ -30,8 +30,23 @@ class LightSdkPlugin : Plugin<Project> {
             "org.jetbrains.kotlinx:kotlinx-datetime",
             "org.unifiedpush.android:connector",
             "androidx.core:core-splashscreen",
+            // LOCAL PATCH: libsignal-android's AAR metadata requires core library desugaring;
+            // Signal connector work (chats). See LIGHT-SDK-PATCHES.md.
+            "com.android.tools:desugar_jdk_libs",
+            // LOCAL PATCH: vendored Signal service layer (chats-signal, SIGNAL-CONNECTOR-SPEC
+            // Phase 1) — libsignal + the vendored code's runtime deps. See LIGHT-SDK-PATCHES.md.
+            "org.signal",
+            "com.squareup.wire",
+            "com.squareup.okio",
+            "com.fasterxml.jackson",
+            "io.reactivex.rxjava3",
+            "io.arrow-kt",
+            "com.google.code.findbugs:jsr305",
             "com.thelightphone.lp3keyboard",
             "com.github.lightphone:light-keyboard",
+            // LOCAL PATCH: fork build with the long-press extended-keys fix (lightphone/light-keyboard#20);
+            // remove when upstream cuts a tag with it. See LIGHT-SDK-PATCHES.md.
+            "com.github.fenleon:light-keyboard",
             "androidx.room",
             "androidx.work",
             "androidx.startup",
