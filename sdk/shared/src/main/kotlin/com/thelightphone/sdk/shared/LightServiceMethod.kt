@@ -748,6 +748,17 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              */
             val encrypted: Boolean = false,
             /**
+             * The chain position paging stopped at — pass it as the next
+             * `beforeEventId` to continue further back. The companion takes it
+             * from the timeline CHAIN (the deepest event it actually read), so
+             * it stays correct where a page's own row order can't: the serve
+             * path sorts a bridged room's page by timestamp, and a cursor taken
+             * from a page's first row then sat off the chain edge, re-serving
+             * rows already shown — the tool prepended nothing and refetched the
+             * same cursor forever (LP3 feedback 2026-09-12).
+             */
+            val nextBeforeEventId: String? = null,
+            /**
              * Event id of the voice note currently playing in the companion
              * (null = nothing playing). The thread poll carries it so the tool
              * can highlight the row that's playing without an extra RPC.
@@ -950,6 +961,12 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
             /** True when the crawl ran to completion; the Account screen pairs it
              *  with [syncEnabled] to show "All messages restored". */
             val restoreCompleted: Boolean = false,
+            /** Chats P2 stat: COUNT(*) of RoomProjection rows (rooms whose
+             *  ingest-time projection is materialized) vs the joined-room
+             *  count — the honest restore→sync→projecting aggregate the
+             *  Account screen renders as "Synced x of n rooms". */
+            val roomsProjected: Int = 0,
+            val roomsJoined: Int = 0,
         )
     }
 
