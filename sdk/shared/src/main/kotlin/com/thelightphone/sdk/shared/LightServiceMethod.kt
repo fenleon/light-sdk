@@ -770,6 +770,13 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              * interpolates between polls so the counter runs smoothly.
              */
             val audioPositionMs: Long? = null,
+            /**
+             * The newest page came back EMPTY off a warm store whose serve
+             * read nothing (chats): the store may still be filling — the
+             * tool keeps showing "Loading messages…" until a page-revision
+             * bump or its one-shot retry lands, instead of "No messages yet."
+             */
+            val pendingSeed: Boolean = false,
         )
     }
 
@@ -967,6 +974,16 @@ sealed interface LightServiceMethod<TRequest, TResponse> {
              *  Account screen renders as "Synced x of n rooms". */
             val roomsProjected: Int = 0,
             val roomsJoined: Int = 0,
+            /** Chats fresh-login backfill progress: rooms whose ThreadRow
+             *  backfill has finished this login vs the pass's room total —
+             *  the Account screen's "Syncing messages… x of y" counter.
+             *  Total 0 = no backfill pass running. */
+            val backfillRoomsDone: Int = 0,
+            val backfillRoomsTotal: Int = 0,
+            /** Chats: the room-list resolver's initial crawl has covered the
+             *  full room map (see the stable-wrap gate). False during a fresh
+             *  login while the list is still filling. */
+            val roomListReady: Boolean = false,
         )
     }
 
