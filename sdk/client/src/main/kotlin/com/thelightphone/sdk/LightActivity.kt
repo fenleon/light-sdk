@@ -1,6 +1,8 @@
 package com.thelightphone.sdk
 
 import android.content.Context
+import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -31,8 +33,14 @@ import com.thelightphone.lp3Keyboard.ui.LightDeviceKeys
 import com.thelightphone.sdk.shared.LightServiceMethod
 import com.thelightphone.sdk.ui.LightModalManager
 import com.thelightphone.sdk.ui.LocalHapticsEnabled
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.resume
 
 private class ScreenViewModelStoreOwner : ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
@@ -232,6 +240,46 @@ class SealedLightContext(internal val androidContext: Context) {
     val fileShare: LightFileShare by lazy { LightFileShare(androidContext) }
     val connectivity: LightConnectivity by lazy { LightConnectivity(androidContext) }
     fun readAsset(path: String): ByteArray = androidContext.assets.open(path).use { it.readBytes() }
+
+    /**
+     * Asks MediaScanner to index the given shared-storage paths (files that
+     * arrived on the device without going through an app write — adb pushes,
+     * MTP copies) so they become MediaStore rows.
+     *
+     * Tools need this for discovery: MediaProvider's FUSE view only exposes
+     * shared-storage files that are indexed (or owned by the calling app), so
+     * a plain `File` walk misses anything unindexed. There is no way to
+     * enumerate those files without indexing them first.
+     *
+     * Resumes with path → content Uri (null where the scanner could not
+     * index the path). If some paths do not complete within 10 s, the
+     * partial results are returned — the caller can rescan later; MediaStore
+     * rows are cumulative.
+     */
+    suspend fun scanMediaFiles(paths: Collection<String>): Map<String, Uri?> {
+        if (paths.isEmpty()) return emptyMap()
+        val results = ConcurrentHashMap<String, Uri?>()
+        try {
+            withTimeout(10_000L) {
+                suspendCancellableCoroutine<Map<String, Uri?>> { continuation ->
+                    val remaining = Collections.synchronizedSet(paths.toMutableSet())
+                    MediaScannerConnection.scanFile(
+                        androidContext,
+                        remaining.toTypedArray(),
+                        null,
+                    ) { path, uri ->
+                        results[path] = uri
+                        if (remaining.remove(path) && remaining.isEmpty()) {
+                            continuation.resume(results.toMap())
+                        }
+                    }
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            // Return the partial map; scanning again is safe and cumulative.
+        }
+        return results.toMap()
+    }
 }
 /**
  * Wrapper class to pass around an instance of LightActivity without exposing it to
