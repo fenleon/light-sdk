@@ -188,11 +188,6 @@ object LightToolPolicy {
     const val LIGHTOS_SERVER_PACKAGE: String = "com.lightos"
     val ALLOWED_ORIENTATIONS: Set<String> = setOf("portrait")
 
-    /**
-     * [lighttool.toml] key opting a tool's `<application>` into
-     * `android:largeHeap="true"` — for tools whose in-process storage is
-     * memory-hungry (e.g. a Matrix Room event store). Off by default.
-     */
     const val LARGE_HEAP: String = "largeHeap"
 
     val ALLOWED_PERMISSIONS: Set<String> = setOf(
