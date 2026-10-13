@@ -127,7 +127,6 @@ object ManifestGenerator {
             |        <intent>
             |            <action android:name="com.thelightphone.sdk.ACTION_SDK_MARKER" />
             |        </intent>
-            |        <package android:name="${xmlAttr(metadata.serverPackage)}" />
             |    </queries>
             |</manifest>""".trimMargin()
         )
