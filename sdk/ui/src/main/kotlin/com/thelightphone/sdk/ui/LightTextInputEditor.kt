@@ -5,16 +5,20 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +37,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thelightphone.lp3Keyboard.ui.*
 import com.thelightphone.lp3Keyboard.ui.viewmodel.EnQwertyLp3KeyboardViewModel
+import com.thelightphone.lp3Keyboard.ui.layout.Layout
+import kotlin.math.abs
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.thelightphone.lp3Keyboard.ui.viewmodel.Lp3KeyboardViewModel
 import com.thelightphone.lp3Keyboard.ui.viewmodel.Lp3RepeatableKeyboardCallback
 import com.thelightphone.lp3Keyboard.ui.viewmodel.defaultEmojis
@@ -61,6 +68,13 @@ fun LightTextInputEditor(
     singleLine: Boolean = false,
     initialCaps: Boolean = false,
     editorKey: Any = remember { Any() },
+    inputTextStyle: TextStyle? = null,
+    submitInTopBar: Boolean = false,
+    topBarSubmitIcon: LightIconConfiguration? = null,
+    topBarSubmitLabel: String? = null,
+    bottomAligned: Boolean = false,
+    centered: Boolean = false,
+    submitOnReturn: Boolean? = null,
 ) {
     val currentOnSubmit by rememberUpdatedState(onSubmit)
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -68,10 +82,11 @@ fun LightTextInputEditor(
     val currentOnHaptic by rememberUpdatedState {
         if (hapticsEnabled) ContextLightVibrator(context).click()
     }
-    val keyboardCallback = remember(state, singleLine) {
+    val keyboardCallback = remember(state, singleLine, submitOnReturn) {
         TextInputKeyboardCallback(
             state = state,
             singleLine = singleLine,
+            submitOnReturn = submitOnReturn,
             onReturn = { currentOnSubmit(state.text) },
             onHaptic = { currentOnHaptic() },
         )
@@ -95,15 +110,27 @@ fun LightTextInputEditor(
         rightBottomBarItem,
         showBackButton,
         singleLine,
+        inputTextStyle,
+        submitInTopBar,
+        topBarSubmitIcon,
+        topBarSubmitLabel,
+        bottomAligned,
+        centered,
+        submitOnReturn,
     )
 }
 
 /**
  * Full-screen text entry matching LightOS `DisplayWithKeyboardPortrait`
  *
- * - Top bar with back button + title
- * - Remaining space shows underlined heading-style input (top-aligned)
- * - Embedded LP3 keyboard, and [LightBottomBar] below it
+ * - Top bar with back button + title (with the submit action in the right slot
+ *   when [submitInTopBar] — the Notes/composer style: keyboard flush at the
+ *   bottom, no bottom bar, maximum input space)
+ * - Remaining space shows underlined heading-style input (top-aligned), or the
+ *   Notes-style input when [bottomAligned]: small text anchored at the bottom,
+ *   lines growing upward as the user types
+ * - Embedded LP3 keyboard, and [LightBottomBar] below it (unless
+ *   [submitInTopBar])
  */
 @Composable
 fun LightTextInputEditor(
@@ -119,9 +146,20 @@ fun LightTextInputEditor(
     rightBottomBarItem: LightBottomBarItem? = null,
     showBackButton: Boolean = true,
     singleLine: Boolean = false,
+    inputTextStyle: TextStyle? = null,
+    submitInTopBar: Boolean = false,
+    topBarSubmitIcon: LightIconConfiguration? = null,
+    topBarSubmitLabel: String? = null,
+    bottomAligned: Boolean = false,
+    centered: Boolean = false,
+    submitOnReturn: Boolean? = null,
 ) {
     val colors = LightThemeTokens.colors
-    val inputStyle = lightInputTextStyle()
+    val inputStyle = inputTextStyle ?: if (bottomAligned) {
+        lightNotesInputTextStyle()
+    } else {
+        lightInputTextStyle()
+    }
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     Surface {
@@ -136,6 +174,24 @@ fun LightTextInputEditor(
                     null
                 },
                 center = LightTopBarCenter.Text(title),
+                // Notes-style editors (composer, recovery key) move the submit
+                // action into the top bar so the keyboard sits flush at the
+                // bottom and the input gets the full remaining space.
+                rightButton = if (submitInTopBar) {
+                    when {
+                        topBarSubmitIcon != null -> LightBarButton.LightIcon(
+                            icon = topBarSubmitIcon,
+                            onClick = { onSubmit(state.text) },
+                            contentDescription = topBarSubmitLabel ?: submitLabel,
+                        )
+                        else -> LightBarButton.Text(
+                            text = topBarSubmitLabel ?: submitLabel,
+                            onClick = { onSubmit(state.text) },
+                        )
+                    }
+                } else {
+                    null
+                },
                 modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
             )
 
@@ -143,39 +199,98 @@ fun LightTextInputEditor(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 2f.gridUnitsAsDp())
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            textLayout?.let { layout ->
-                                state.edit {
-                                    selection =
-                                        TextRange(layout.getOffsetForPosition(down.position))
-                                }
-                            }
-                            drag(down.id) { change ->
-                                textLayout?.let { layout ->
-                                    state.edit {
-                                        selection =
-                                            TextRange(layout.getOffsetForPosition(change.position))
+                    .padding(horizontal = 2f.gridUnitsAsDp()),
+                // Top-aligned by default; Notes-style editors anchor the text
+                // at the bottom (lines grow upward); centered vertically
+                // between the top bar and the keyboard when [centered].
+                contentAlignment = when {
+                    centered -> Alignment.CenterStart
+                    else -> Alignment.TopStart
+                },
+            ) {
+                // Notes-style input (bottomAligned): short text sits at the
+                // bottom and grows upward; once the draft outgrows the panel
+                // it scrolls instead of spilling past the keyboard — pinned
+                // to the newest line while typing, freely scrollable to read
+                // earlier lines (feedback 2026-08-21). Other modes keep the
+                // plain wrap-content column positioned by the outer Box.
+                val scrollState = rememberScrollState()
+                LaunchedEffect(Unit) {
+                    snapshotFlow { scrollState.maxValue }
+                        .distinctUntilChanged()
+                        .collect { max -> if (max > 0) scrollState.scrollTo(max) }
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (bottomAligned) {
+                                Modifier.fillMaxHeight().verticalScroll(scrollState)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    verticalArrangement = if (bottomAligned) Arrangement.Bottom else Arrangement.Top,
+                ) {
+                    // The text + cursor live in their own Box so the cursor
+                    // offset math stays text-relative (bottom-anchored text is
+                    // not at the outer Box's origin), and tap-to-place reads
+                    // the same coordinates.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    textLayout?.let { layout ->
+                                        state.edit {
+                                            selection =
+                                                TextRange(layout.getOffsetForPosition(down.position))
+                                        }
+                                    }
+                                    drag(down.id) { change ->
+                                        val delta = change.position - change.previousPosition
+                                        // Only mostly-horizontal drags move the
+                                        // cursor; vertical drags must pass
+                                        // through to the scrollable draft so a
+                                        // long message can be scrolled to read
+                                        // (feedback 2026-08-22: the selection
+                                        // gesture consumed every drag).
+                                        if (abs(delta.y) <= abs(delta.x)) {
+                                            textLayout?.let { layout ->
+                                                state.edit {
+                                                    selection = TextRange(
+                                                        layout.getOffsetForPosition(change.position),
+                                                    )
+                                                }
+                                            }
+                                            change.consume()
+                                        }
                                     }
                                 }
-                                change.consume()
-                            }
+                            },
+                    ) {
+                        BasicText(
+                            text = state.text.toString(),
+                            style = inputStyle,
+                            onTextLayout = { textLayout = it },
+                            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                            softWrap = !singleLine,
+                            overflow = if (singleLine) TextOverflow.StartEllipsis else TextOverflow.Clip,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        textLayout?.let { layout ->
+                            val cursorPos = state.selection.min.coerceIn(0, layout.layoutInput.text.length)
+                            val rect = layout.getCursorRect(cursorPos)
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(rect.left.toInt(), rect.top.toInt()) }
+                                    .width(2.dp)
+                                    .height(with(LocalDensity.current) { rect.height.toDp() })
+                                    .background(colors.content),
+                            )
                         }
-                    },
-                contentAlignment = Alignment.TopStart,
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    BasicText(
-                        text = state.text.toString(),
-                        style = inputStyle,
-                        onTextLayout = { textLayout = it },
-                        maxLines = if (singleLine) 1 else Int.MAX_VALUE,
-                        softWrap = !singleLine,
-                        overflow = if (singleLine) TextOverflow.StartEllipsis else TextOverflow.Clip,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    }
                     Spacer(
                         modifier = Modifier.height(
                             INPUT_UNDERLINE_GAP_GRID_UNITS.gridUnitsAsDp(),
@@ -188,45 +303,67 @@ fun LightTextInputEditor(
                             .background(colors.content),
                     )
                 }
-                textLayout?.let { layout ->
-                    val cursorPos = state.selection.min.coerceIn(0, layout.layoutInput.text.length)
-                    val rect = layout.getCursorRect(cursorPos)
-                    Box(
-                        modifier = Modifier
-                            .offset { IntOffset(rect.left.toInt(), rect.top.toInt()) }
-                            .width(2.dp)
-                            .height(with(LocalDensity.current) { rect.height.toDp() })
-                            .background(colors.content),
-                    )
-                }
             }
 
-            LightEmbeddedLp3Keyboard(
-                viewModel = viewModel,
-                additionalBottomHeight = 5f.gridUnitsAsDp(),
-                bottomBar = {
-                    val submitItem: LightBottomBarItem = when (submitIcon) {
-                        null -> LightBarButton.Text(
-                            text = submitLabel,
-                            onClick = { onSubmit(state.text) },
-                        )
-                        else -> LightBarButton.LightIcon(
-                            icon = submitIcon,
-                            onClick = { onSubmit(state.text) },
-                            contentDescription = submitLabel,
+            if (submitInTopBar) {
+                // Notes-style: keyboard flush at the bottom, submit in the top
+                // bar, maximum input space. The 5-gu bottom-bar row is still
+                // reserved below the keys (LP3-verified 2026-08-21: the
+                // composer's clear-draft X overlapped the keyboard's bottom
+                // row when the keys ran flush to the screen edge). The zone
+                // is empty here; apps like chats' composer place their action
+                // (the X) there with a BottomEnd alignment.
+                LightEmbeddedLp3Keyboard(
+                    viewModel = viewModel,
+                    additionalBottomHeight = 5f.gridUnitsAsDp(),
+                )
+            } else {
+                LightEmbeddedLp3Keyboard(
+                    viewModel = viewModel,
+                    additionalBottomHeight = 5f.gridUnitsAsDp(),
+                    bottomBar = {
+                        // The action sits in a bottom bar below the keys;
+                        // centered by default, or left · submit · right when
+                        // side items are supplied.
+                        LightBottomBar(
+                            topPadding = 0.dp,
+                            items = if (leftBottomBarItem == null &&
+                                rightBottomBarItem == null
+                            ) {
+                                listOf(
+                                    submitBarButton(state, submitLabel, submitIcon, onSubmit),
+                                )
+                            } else {
+                                listOf(
+                                    leftBottomBarItem,
+                                    submitBarButton(state, submitLabel, submitIcon, onSubmit),
+                                    rightBottomBarItem,
+                                )
+                            },
                         )
                     }
-                    LightBottomBar(
-                        items = if (leftBottomBarItem == null && rightBottomBarItem == null) {
-                            listOf(submitItem)
-                        } else {
-                            listOf(leftBottomBarItem, submitItem, rightBottomBarItem)
-                        },
-                    )
-                }
-            )
+                )
+            }
         }
     }
+}
+
+/** The submit action rendered inside the editor's bottom bar. */
+private fun submitBarButton(
+    state: TextFieldState,
+    submitLabel: String,
+    submitIcon: LightIconConfiguration?,
+    onSubmit: (CharSequence) -> Unit,
+) = when (submitIcon) {
+    null -> LightBarButton.Text(
+        text = submitLabel,
+        onClick = { onSubmit(state.text) },
+    )
+    else -> LightBarButton.LightIcon(
+        icon = submitIcon,
+        onClick = { onSubmit(state.text) },
+        contentDescription = submitLabel,
+    )
 }
 
 private fun factory(
@@ -237,16 +374,19 @@ private fun factory(
     object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return EnQwertyLp3KeyboardViewModel<Unit>(
-                callback,
-                keyboardOptionsFlow = keyboardOptionsFlow,
-                optionsForLayout = {
-                    val showCloseButton = !it.isRootLayout
-                    LayoutOptions(showCloseButton)
-                },
-            ).apply {
-                if (initialCaps) setCapsMode(true)
-            } as T
+            val optionsForLayout: (Layout) -> LayoutOptions = {
+                val showCloseButton = !it.isRootLayout
+                LayoutOptions(showCloseButton)
+            }
+            val viewModel: Lp3KeyboardViewModel<Unit> =
+                EnQwertyLp3KeyboardViewModel<Unit>(
+                    callback,
+                    keyboardOptionsFlow = keyboardOptionsFlow,
+                    optionsForLayout = optionsForLayout,
+                ).apply {
+                    if (initialCaps) setCapsMode(true)
+                }
+            return viewModel as T
         }
 
     }
@@ -256,6 +396,21 @@ private fun lightInputTextStyle(): TextStyle {
     val colors = LightThemeTokens.colors
     val t = LightThemeTokens.typography
     return t.heading
+        .copy(
+            color = colors.content,
+        )
+        .scaledForScreenHeight()
+}
+
+/**
+ * The Notes-style input: small text (paragraph) so the composer reads like the
+ * LP3 Notes editor, whose lines sit just above the keyboard and grow upward.
+ */
+@Composable
+private fun lightNotesInputTextStyle(): TextStyle {
+    val colors = LightThemeTokens.colors
+    val t = LightThemeTokens.typography
+    return t.paragraph
         .copy(
             color = colors.content,
         )
