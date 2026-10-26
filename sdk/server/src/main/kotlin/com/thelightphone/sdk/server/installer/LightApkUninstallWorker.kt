@@ -1,5 +1,6 @@
 package com.thelightphone.sdk.server.installer
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -57,6 +58,8 @@ class LightApkUninstallWorker(context: Context, params: WorkerParameters) :
         }
     }
 
+    // The server module is only ever embedded in a system app that holds DELETE_PACKAGES.
+    @SuppressLint("MissingPermission")
     private fun uninstallPackage(packageName: String) {
         val intent = Intent(
             applicationContext,
