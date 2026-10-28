@@ -188,8 +188,10 @@ internal const val SEEK_INCREMENT_MS = 15_000L
 internal const val ITEM_USAGE_EXTRA = "com.thelightphone.sdk.audio.ITEM_USAGE"
 
 /** Whether a queue item may set this usage; the others only make sense for a whole player. */
-internal fun LightAudioUsage.isItemUsage(): Boolean =
-    this == LightAudioUsage.Music || this == LightAudioUsage.Speech
+internal fun LightAudioUsage.isItemUsage(): Boolean = when (this) {
+    LightAudioUsage.Music, LightAudioUsage.Speech -> true
+    LightAudioUsage.Alarm, LightAudioUsage.VoiceCall -> false
+}
 
 /** The usage an item plays with: its own, else the player's. */
 internal fun effectiveUsage(itemUsage: LightAudioUsage?, playerUsage: LightAudioUsage): LightAudioUsage =
