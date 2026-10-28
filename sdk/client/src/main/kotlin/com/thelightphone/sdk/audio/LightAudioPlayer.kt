@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -198,8 +199,7 @@ class LightAudioPlayer internal constructor(
      * clears playback and ignores [startIndex].
      *
      * @throws IllegalArgumentException when a non-empty queue has an invalid
-     *   [startIndex], or an item has a [LightAudioItem.usage] other than
-     *   [LightAudioUsage.Music] or [LightAudioUsage.Speech]
+     *   [startIndex]
      */
     fun setMediaQueue(items: List<LightAudioItem>, startIndex: Int = 0) {
         if (items.isEmpty()) {
@@ -224,9 +224,6 @@ class LightAudioPlayer internal constructor(
 
     /**
      * Appends [item] to the queue.
-     *
-     * @throws IllegalArgumentException when [item] has a [LightAudioItem.usage]
-     *   other than [LightAudioUsage.Music] or [LightAudioUsage.Speech]
      */
     fun addMediaItem(item: LightAudioItem) {
         val mediaItem = item.toMediaItem()
@@ -239,9 +236,7 @@ class LightAudioPlayer internal constructor(
      * Inserts [item] at [index], shifting later items back. An [index] past the
      * end appends.
      *
-     * @throws IllegalArgumentException when [index] is negative, or [item] has
-     *   a [LightAudioItem.usage] other than [LightAudioUsage.Music] or
-     *   [LightAudioUsage.Speech]
+     * @throws IllegalArgumentException when [index] is negative
      */
     fun addMediaItem(index: Int, item: LightAudioItem) {
         require(index >= 0) { "Queue index must not be negative" }
@@ -290,9 +285,7 @@ class LightAudioPlayer internal constructor(
      * [LightAudioItem.id] as the item it replaces. Cached bytes are filed under
      * the id, so the new URL reuses what the old one already downloaded.
      *
-     * @throws IllegalArgumentException when [index] is negative, or [item] has
-     *   a [LightAudioItem.usage] other than [LightAudioUsage.Music] or
-     *   [LightAudioUsage.Speech]
+     * @throws IllegalArgumentException when [index] is negative
      */
     fun replaceMediaItem(index: Int, item: LightAudioItem) {
         require(index >= 0) { "Queue index must not be negative" }
@@ -425,12 +418,15 @@ internal suspend fun awaitPlayerReady(
 
 @OptIn(UnstableApi::class)
 internal fun LightAudioItem.toMediaItem(): MediaItem {
-    usage?.let { require(it.isItemUsage()) { "Queue items may only use Music or Speech, not $it" } }
+    val itemUsage = usage?.takeIf { it.isItemUsage() }
+    if (usage != null && itemUsage == null) {
+        Log.w(TAG, "Ignoring item usage $usage; queue items may only use Music or Speech")
+    }
     return MediaItem.Builder()
         .setUri(Uri.parse(source.uriString()))
         .setMediaId(stableId())
         .setCustomCacheKey(stableId())
-        .setMediaMetadata(metadata.toMedia3Metadata(usage))
+        .setMediaMetadata(metadata.toMedia3Metadata(itemUsage))
         .build()
 }
 
@@ -497,6 +493,7 @@ internal fun MediaItem.toLightQueueItem(): LightQueueItem = LightQueueItem(
 
 private fun Long.validDuration(): Long = takeIf { it > 0L && it != C.TIME_UNSET } ?: 0L
 
+private const val TAG = "LightAudioPlayer"
 private const val POSITION_POLL_MS = 250L
 private const val MIN_SPEED = 0.1f
 /** Queue index reported when a player has no media item. */

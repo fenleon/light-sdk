@@ -295,7 +295,8 @@ sealed interface LightAudioSource {
  *   player's [LightPlayerSpec.usage]: audio processing, the lock screen
  *   controls (previous/next for [LightAudioUsage.Music], ±15s for
  *   [LightAudioUsage.Speech]) and the usage LightOS reads. Only
- *   [LightAudioUsage.Music] and [LightAudioUsage.Speech]; null follows the player.
+ *   [LightAudioUsage.Music] and [LightAudioUsage.Speech]; others are ignored
+ *   with a warning. Null follows the player.
  */
 data class LightAudioItem(
     val source: LightAudioSource,
