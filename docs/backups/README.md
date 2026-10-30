@@ -67,7 +67,7 @@ Things to know:
 
 ## Testing in the emulator
 
-Make sure you've set up the emulator as a [system app](../system_app). **Also, ensure you've setup adb to forward ports from your local machine so your browser can talk to the Tool Manager and the emulator's embedded server** (which acts as your fake cloud storage provider in this case):
+Make sure you've set up the emulator as a [system app](../system_app/README.md). **Also, ensure you've setup adb to forward ports from your local machine so your browser can talk to the Tool Manager and the emulator's embedded server** (which acts as your fake cloud storage provider in this case):
 ```bash
 adb forward tcp:8090 tcp:8090
 adb forward tcp:54449 tcp:54449
