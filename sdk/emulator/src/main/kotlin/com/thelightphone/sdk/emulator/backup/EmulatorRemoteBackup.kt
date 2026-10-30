@@ -115,10 +115,13 @@ class EmulatorRemoteBackup(
 
     private suspend fun accessToken(): String = "Bearer ${tokenProvider.getAccessToken().getOrThrow()}"
 
-    private fun fileUrl(path: String): String {
-        val normalized = if (path.isEmpty() || path == ".") "" else "/$path"
-        return "$baseUrl/files$normalized"
-    }
+private fun fileUrl(path: String): String =
+    URLBuilder(baseUrl).apply {
+        appendPathSegments("files")
+        if (path.isNotEmpty() && path != ".") {
+            appendPathSegments(path.split("/"), encodeSlash = true)
+        }
+    }.buildString()
 
     private fun joinPath(a: String, b: String) = if (a.isEmpty() || a == ".") b else "$a/$b"
 
