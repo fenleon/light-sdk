@@ -119,16 +119,7 @@ class LightSdkToolsBackupDataSource(
         val (leafKey, relativePath) = splitLeafPath(path)
         val tree =
             leafTrees[leafKey] ?: throw NoSuchElementException("Unknown backup path: $leafKey")
-        val digest = MessageDigest.getInstance("SHA-256")
-        tree.getBytes(Paths.get(relativePath)).getOrThrow().use { input ->
-            val buffer = ByteArray(8192)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
+tree.getBytes(Paths.get(relativePath)).getOrThrow().use { it.sha256Hex() }
     }.onFailure {
         logger.reportError(
             TAG,
