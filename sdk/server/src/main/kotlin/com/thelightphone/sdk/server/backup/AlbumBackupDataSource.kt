@@ -73,16 +73,7 @@ class AlbumBackupDataSource(
     }.onFailure { logger.reportError(TAG, it, "Failed to read file under ${labelOf(path)}") }
 
     override suspend fun hashForFile(path: Path): Result<String> = runCatching {
-        val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(resolve(path)).use { input ->
-            val buffer = ByteArray(8192)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
+        FileInputStream(resolve(path)).digestHexString()
     }.onFailure { logger.reportError(TAG, it, "Failed to hash file under ${labelOf(path)}") }
 
     private fun kindFor(parent: Path): Kind =
@@ -113,7 +104,7 @@ class AlbumBackupDataSource(
     private fun dirTag(dir: File): String =
         MessageDigest.getInstance("SHA-256")
             .digest(dir.absolutePath.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            .toHexString()
             .take(TAG_LENGTH)
 
     companion object {

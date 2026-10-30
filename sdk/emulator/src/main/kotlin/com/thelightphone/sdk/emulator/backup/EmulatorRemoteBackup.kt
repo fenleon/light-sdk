@@ -14,6 +14,8 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLBuilder
+import io.ktor.http.appendPathSegments
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
 import java.io.ByteArrayInputStream
@@ -38,7 +40,11 @@ class EmulatorRemoteBackup(
     private val httpClient: HttpClient = HttpClient(OkHttp)
 ) : RemoteBackup {
 
-    private data class RemoteEntry(val name: String, val isDirectory: Boolean, val lastModified: Long)
+    private data class RemoteEntry(
+        val name: String,
+        val isDirectory: Boolean,
+        val lastModified: Long
+    )
 
     override suspend fun getMostRecentBackupDates(): Result<Map<String, Instant>> = runCatching {
         val labels = listSubdirectories(Path(rootFolderPath)).getOrThrow()
@@ -64,7 +70,11 @@ class EmulatorRemoteBackup(
         check(response.status.isSuccess()) { "createDirectory failed: ${response.status}: ${response.bodyAsText()}" }
     }
 
-    override suspend fun uploadFile(remoteDirectory: Path, fileName: String, data: InputStream): Result<Unit> =
+    override suspend fun uploadFile(
+        remoteDirectory: Path,
+        fileName: String,
+        data: InputStream
+    ): Result<Unit> =
         runCatching {
             val token = accessToken()
             // stream it
@@ -79,11 +89,15 @@ class EmulatorRemoteBackup(
         listEntries(remoteDirectory).getOrThrow().filter { !it.isDirectory }.map { it.name }
     }
 
-    override suspend fun listSubdirectories(remoteDirectory: Path): Result<List<String>> = runCatching {
-        listEntries(remoteDirectory).getOrThrow().filter { it.isDirectory }.map { it.name }
-    }
+    override suspend fun listSubdirectories(remoteDirectory: Path): Result<List<String>> =
+        runCatching {
+            listEntries(remoteDirectory).getOrThrow().filter { it.isDirectory }.map { it.name }
+        }
 
-    override suspend fun downloadFile(remoteDirectory: Path, fileName: String): Result<InputStream> = runCatching {
+    override suspend fun downloadFile(
+        remoteDirectory: Path,
+        fileName: String
+    ): Result<InputStream> = runCatching {
         val token = accessToken()
         val response = httpClient.get(fileUrl(joinPath(remoteDirectory.toString(), fileName))) {
             header(HttpHeaders.Authorization, token)
@@ -113,15 +127,16 @@ class EmulatorRemoteBackup(
         }
     }
 
-    private suspend fun accessToken(): String = "Bearer ${tokenProvider.getAccessToken().getOrThrow()}"
+    private suspend fun accessToken(): String =
+        "Bearer ${tokenProvider.getAccessToken().getOrThrow()}"
 
-private fun fileUrl(path: String): String =
-    URLBuilder(baseUrl).apply {
-        appendPathSegments("files")
-        if (path.isNotEmpty() && path != ".") {
-            appendPathSegments(path.split("/"), encodeSlash = true)
-        }
-    }.buildString()
+    private fun fileUrl(path: String): String =
+        URLBuilder(baseUrl).apply {
+            appendPathSegments("files")
+            if (path.isNotEmpty() && path != ".") {
+                appendPathSegments(path.split("/"))
+            }
+        }.buildString()
 
     private fun joinPath(a: String, b: String) = if (a.isEmpty() || a == ".") b else "$a/$b"
 

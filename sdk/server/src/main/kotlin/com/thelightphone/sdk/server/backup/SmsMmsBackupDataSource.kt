@@ -269,7 +269,7 @@ class SmsMmsBackupDataSource(
             private fun cacheDigest() {
                 if (cached) return
                 cached = true
-                hashCache[pathKey] = digest.digest().joinToString("") { "%02x".format(it) }
+                hashCache[pathKey] = digest.digest().toHexString()
             }
         }
     }

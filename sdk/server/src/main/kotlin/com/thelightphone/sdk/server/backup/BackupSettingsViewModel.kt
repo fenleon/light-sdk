@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 
@@ -40,7 +42,7 @@ interface BackupSettingsViewModel {
 abstract class DefaultBackupSettingsViewModel(
     override val backupPreferences: DefaultObservableBackupPreferences,
     val allowList: BackupPackageAllowList,
-    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : BackupSettingsViewModel {
 
     protected abstract suspend fun getBackupCapablePackages(): List<BackupCapableTool>
@@ -57,8 +59,16 @@ abstract class DefaultBackupSettingsViewModel(
         .map { it is BackupStatus.InProgress }
         .stateIn(scope, SharingStarted.Eagerly, backupPreferences.lastBackupStatusFlow.value is BackupStatus.InProgress)
 
+    private val populateAllowListMutex = Mutex()
+
     init {
-        scope.launch { populateBackupAllowList() }
+        refreshAllowList()
+    }
+
+    // Serialized so overlapping refreshes can't interleave; the last run to finish read the
+    // latest package state, so a slower, older run can't overwrite a newer result.
+    fun refreshAllowList() {
+        scope.launch { populateAllowListMutex.withLock { populateBackupAllowList() } }
     }
 
     override suspend fun onEnabledChanged(enabled: Boolean) {

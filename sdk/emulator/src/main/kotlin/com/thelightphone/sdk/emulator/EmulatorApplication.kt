@@ -150,6 +150,7 @@ class EmulatorApplication : Application(), Configuration.Provider {
             }
             onApkInstalled = {
                 updateValidSignatures()
+                backupSettingsViewModel.refreshAllowList()
                 _installedToolsRefreshCount.value++
             }
             getToolLabel = { packageName ->

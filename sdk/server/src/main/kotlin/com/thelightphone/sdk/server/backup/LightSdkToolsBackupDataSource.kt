@@ -20,7 +20,6 @@ import kotlinx.io.files.Path
 import java.io.InputStream
 import java.nio.file.Path as JavaPath
 import java.nio.file.Paths
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
 import kotlin.time.Clock
@@ -55,7 +54,9 @@ class LightSdkToolsBackupDataSource(
 
     override suspend fun getPathsToBackUp(): Result<List<BackupPath>> = runCatching {
         getBackupCapableTools()
-            .filter { LightSdkServer.canBackUpFromPackage(BackupCapableTool(it.packageName, false)) }
+            .filter {
+                LightSdkServer.canBackUpFromPackage(BackupCapableTool(it.packageName, false))
+            }
             .flatMap { tool -> backupPathsForTool(tool) }
             .also { logger.log(TAG, "${it.size} tools to be backed up.") }
     }.onFailure { logger.reportError(TAG, it, "Failed to list backup paths") }
@@ -119,7 +120,7 @@ class LightSdkToolsBackupDataSource(
         val (leafKey, relativePath) = splitLeafPath(path)
         val tree =
             leafTrees[leafKey] ?: throw NoSuchElementException("Unknown backup path: $leafKey")
-tree.getBytes(Paths.get(relativePath)).getOrThrow().use { it.sha256Hex() }
+        tree.getBytes(Paths.get(relativePath)).getOrThrow().digestHexString()
     }.onFailure {
         logger.reportError(
             TAG,
